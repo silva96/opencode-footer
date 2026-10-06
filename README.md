@@ -37,32 +37,48 @@ Build · GPT model high · Fast off · 5h 80% left · weekly 50% left · ~/proje
 Codex is optional: omit the `quota` section to use the other footer information
 without it. Node.js 22+ is needed only for running the standalone tests.
 
-## Install from npm / pnpm
+## Install
 
 Available on [npm](https://www.npmjs.com/package/opencode-footer).
-pnpm uses the same registry. To install the package in a project:
+Use OpenCode's dedicated plugin installer:
 
 ```sh
-pnpm add opencode-footer
+opencode plugin add opencode-footer
 ```
 
-For OpenCode, the simplest installation is to merge this into
-`~/.config/opencode/cli.json`. OpenCode resolves the package itself; a separate
-`pnpm add` is not required for this configuration:
+The installer detects this package's TUI-only entrypoint and adds it to the
+global `cli.json`. The published npm name is **`opencode-footer`**, not
+`@silva96/opencode-footer`; no separate `npm install` or `pnpm add` is needed.
+
+To disable OpenCode's built-in footer contribution, merge
+`"-opencode.prompt.footer"` into the same plugin array, preserving existing
+entries. The result should include:
 
 ```json
 {
   "$schema": "https://opencode.ai/v2/cli.json",
   "plugins": [
     "-opencode.prompt.footer",
-    { "package": "opencode-footer@0.1.0" }
+    { "package": "opencode-footer" }
   ]
 }
 ```
 
-Preserve existing settings and plugin entries, then reopen OpenCode. Pin the
-version for reproducible installations, and change it when upgrading. Each
-configuration can use the same package version with its own `options`.
+Editing `~/.config/opencode/cli.json` directly is also supported: OpenCode resolves
+and installs the configured package. Do not add a second entry if the installer
+already created one. Reopen OpenCode after installation.
+
+For a reproducible installation, pin a version instead:
+
+```sh
+opencode plugin add opencode-footer@0.1.0
+```
+
+Use either the pinned or unpinned entry, not both. Unpinned installations can be
+updated with `opencode plugin update opencode-footer`. Exact versions remain
+pinned until you change the configured version.
+
+See [OpenCode's plugin management documentation](https://opencode.ai/v2/docs/plugins#manage).
 
 ## Install from GitHub
 
@@ -113,7 +129,9 @@ Keep account-specific paths and configuration files outside this repository.
 
 ## Configuration
 
-Plugin options belong in the same `cli.json` entry:
+Plugin options belong in the same `cli.json` entry. Replace the installer-created
+string entry with the object form below rather than adding another copy. Keep the
+exact package specifier if you installed a pinned version.
 
 ```json
 {
@@ -121,7 +139,7 @@ Plugin options belong in the same `cli.json` entry:
   "plugins": [
     "-opencode.prompt.footer",
     {
-      "package": "opencode-footer@0.1.0",
+      "package": "opencode-footer",
       "options": {
         "sections": ["agent", "model", "fast", "quota", "path", "branch", "tokens", "context"],
         "codexHome": "~/.codex",
