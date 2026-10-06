@@ -1,0 +1,8 @@
+node_modules/
+coverage/
+*.tgz
+.env
+.env.*
+auth.json
+*.log
+.DS_Store
