@@ -152,7 +152,7 @@ export function createCodexQuotaPoller({
       else request.resolve(message.result)
     })
     await rpc("initialize", {
-      clientInfo: { name: "opencode_footer", title: "OpenCode Footer", version: "0.1.0" },
+      clientInfo: { name: "opencode_footer", title: "OpenCode Footer", version: "0.1.1" },
     })
     if (!connection || stopped) throw new Error("connection_closed")
     connection.process.stdin.write(`${JSON.stringify({ method: "initialized", params: {} })}\n`)
