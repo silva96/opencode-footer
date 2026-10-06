@@ -1,8 +1,15 @@
 /** @jsxImportSource @opentui/solid */
 import { Plugin } from "@opencode/plugin/tui"
-import { createEffect, createMemo, createSignal, For, Show } from "solid-js"
-import { createCodexQuotaPoller, quotaDisplayParts } from "./codex-quota.mjs"
-import { normalizeOptions, orderStatusParts, shouldShowQuota } from "./options.mjs"
+import type { Context } from "@opencode/plugin/tui/context"
+import { createEffect, createMemo, createRoot, createSignal, For, Show } from "solid-js"
+import { basename } from "node:path"
+import { hostname } from "node:os"
+import { createCodexQuotaPoller } from "./codex-quota.mjs"
+import { shouldShowQuota } from "./options.mjs"
+import { buildStatusParts } from "./status-parts.mjs"
+import { footerCommandAction } from "./statusline-config.mjs"
+import { configureSettings, configureStatusLine } from "./configurator"
+import { configFile, settingsFromOptions, settingsKey } from "./settings.mjs"
 
 type QuotaState = {
   status: "loading" | "ready" | "stale" | "unavailable"
@@ -27,6 +34,7 @@ type ModelRef = {
 }
 
 type SessionRecord = {
+  title?: string
   agent?: string
   model?: ModelRef
   location?: { directory?: string | null; workspaceID?: string }
@@ -54,76 +62,94 @@ type StatusTone =
   | "effortHigh"
   | "effortXhigh"
   | "effortMax"
-type StatusPart = { text: string; tone: StatusTone; section: string; separator?: string }
-
-const effortTone = (effort: string): StatusTone => {
-  switch (effort.toLowerCase()) {
-    case "low":
-    case "minimal":
-      return "effortLow"
-    case "medium":
-      return "effortMedium"
-    case "high":
-      return "effortHigh"
-    case "xhigh":
-      return "effortXhigh"
-    case "max":
-      return "effortMax"
-    default:
-      return "model"
-  }
+type StatusPart = { text: string; tone: StatusTone; item: string; separator?: string }
+type SettingsState = {
+  settings?: ReturnType<typeof settingsFromOptions>
 }
 
-const compact = (value: number) => {
-  if (value < 1_000) return String(Math.round(value))
-  if (value < 1_000_000) return `${(value / 1_000).toFixed(1)}k`
-  return `${(value / 1_000_000).toFixed(1)}M`
-}
-
-const contextUsed = (tokens?: TokenUsage) =>
-  (tokens?.input ?? 0) +
-  (tokens?.output ?? 0) +
-  (tokens?.reasoning ?? 0) +
-  (tokens?.cache?.read ?? 0) +
-  (tokens?.cache?.write ?? 0)
-
-export default Plugin.define({
-  id: "opencode-footer",
-  setup(context) {
-    const options = normalizeOptions(context.options)
+const FooterRuntime = {
+  mount(context: Context, stored: SettingsState, update: (mutation: (draft: SettingsState) => void) => Promise<void>, dispose: () => void) {
+    const options = createMemo(() => settingsFromOptions(stored.settings))
+    const save = async (changes: Record<string, unknown>) => {
+      await update((draft) => { draft.settings = settingsFromOptions({ ...draft.settings, ...changes }) })
+    }
+    let configuring = false
+    context.ui.slot({
+      append: "app",
+      render: () => {
+        // Older hosts require a mounted component's keymap provider.
+        context.keymap.layer(() => ({
+          mode: "global",
+          commands: [{
+            id: "opencode-footer.configure", title: "Configure Footer", group: "Footer", palette: true,
+            slash: { name: "footer", arguments: true },
+            run: async (input) => {
+              if (configuring) return
+              configuring = true
+              try {
+                let action = footerCommandAction(input)
+                if (action === undefined) {
+                  context.ui.toast.show({ message: "Use /footer items or /footer settings", variant: "warning" })
+                  return
+                }
+                if (action === "menu") {
+                  action = await context.ui.dialog.select<string>({
+                    title: "Configure Footer",
+                    options: [
+                      { value: "items", title: "Items", description: "Choose and reorder footer items" },
+                      { value: "settings", title: "Settings", description: "Codex home, quotas, wrapping, and separator" },
+                    ],
+                  })
+                }
+                if (action === undefined) return
+                const advanced = () => configureSettings(context, options, save)
+                if (action === "settings") await advanced()
+                else {
+                  let advancedTask: Promise<void> | undefined
+                  await configureStatusLine(context, options(), save, () => advancedTask = advanced())
+                  await advancedTask
+                }
+              } finally { configuring = false }
+            },
+          }],
+        }))
+        return null
+      },
+    })
     const [revision, setRevision] = createSignal(0)
     const [quota, setQuota] = createSignal<QuotaState>({ status: "loading", windows: [], updatedAt: null })
     let quotaPoller: ReturnType<typeof createCodexQuotaPoller> | undefined
+    let pollerKey: string | undefined
     const selectedProvider = () => {
       revision()
       const selected = context.ui.model.current() as ModelRef | undefined
       return selected?.model?.providerID ?? selected?.providerID
     }
     createEffect(() => {
-      const enabled = shouldShowQuota(options, selectedProvider())
+      const settings = options()
+      const enabled = shouldShowQuota(settings, selectedProvider())
+      const nextKey = enabled ? JSON.stringify([settings.codexHome, settings.codexCommand, settings.refreshIntervalMs, settings.requestTimeoutMs]) : undefined
+      if (nextKey !== pollerKey) {
+        quotaPoller?.stop()
+        quotaPoller = undefined
+        pollerKey = nextKey
+        setQuota({ status: "loading", windows: [], updatedAt: null })
+      }
       if (enabled && !quotaPoller) {
         setQuota({ status: "loading", windows: [], updatedAt: null })
         quotaPoller = createCodexQuotaPoller({
-          codexHome: options.codexHome,
-          intervalMs: options.refreshIntervalMs,
-          requestTimeoutMs: options.requestTimeoutMs,
-          codexCommand: options.codexCommand,
+          codexHome: settings.codexHome,
+          intervalMs: settings.refreshIntervalMs,
+          requestTimeoutMs: settings.requestTimeoutMs,
+          codexCommand: settings.codexCommand,
           onUpdate: setQuota,
         })
-      } else if (!enabled && quotaPoller) {
-        quotaPoller.stop()
-        quotaPoller = undefined
-        setQuota({ status: "loading", windows: [], updatedAt: null })
       }
     })
-    const quotaParts = (): StatusPart[] => !shouldShowQuota(options, selectedProvider()) ? [] : quotaDisplayParts(quota()).map((part) => ({
-      text: part.text,
-      section: "quota",
-      tone: part.stale ? "fastOff" : part.remaining !== null && part.remaining <= 10 ? "effortXhigh" : "context",
-    }))
     const location = context.location ?? context.data.location.default()
     const refresh = () => setRevision((value) => value + 1)
     const toneColor = (tone: StatusTone) => {
+      if (!options().useThemeColors) return context.theme.text.base
       switch (tone) {
         case "agent":
         case "model":
@@ -184,22 +210,11 @@ export default Plugin.define({
         ?.replace(/(?:[-\s]+)?\bfast\b/gi, "")
         .replace(/\s+/g, " ")
         .trim()
-      const parts: StatusPart[] = []
 
       const agentName = session?.agent
         ? context.data.location.agent.list(location)?.find((agent) => agent.id === session.agent)?.name ?? session.agent
         : undefined
-      if (agentName) {
-        const titleizedAgent = agentName.replace(/(^|[-_\s])([a-z])/g, (_, separator, letter) => `${separator}${letter.toUpperCase()}`)
-        parts.push({ text: titleizedAgent, tone: "agent", section: "agent" })
-      }
-
-      if (displayModelName) {
-        parts.push({ text: displayModelName, tone: "model", section: "model" })
-      }
-      if (variant) parts.push({ text: variant, tone: effortTone(variant), section: "model", separator: " " })
-      parts.push({ text: fastMode ? "Fast on" : "Fast off", tone: fastMode ? "fastOn" : "fastOff", section: "fast" })
-      parts.push(...quotaParts())
+      const titleizedAgent = agentName?.replace(/(^|[-_\s])([a-z])/g, (_, separator, letter) => `${separator}${letter.toUpperCase()}`)
 
       let latestTokens: TokenUsage | undefined
       for (const message of (context.data.session.message.list(sessionID) ?? []) as AssistantMessage[]) {
@@ -207,29 +222,19 @@ export default Plugin.define({
       }
 
       const directory = session?.location?.directory ?? location?.directory
-      if (directory) parts.push({ text: context.ui.format.path(directory), tone: "path", section: "path" })
 
       const vcsLocation = session?.location?.directory
         ? { directory: session.location.directory, workspaceID: session.location.workspaceID }
         : location
       const branch = vcsLocation ? context.data.location.vcs.info(vcsLocation)?.branch.current : undefined
-      if (branch) parts.push({ text: branch, tone: "branch", section: "branch" })
-
-      const input = session?.tokens?.input ?? 0
-      const output = session?.tokens?.output ?? 0
-      if (input > 0 || output > 0) {
-        parts.push({ text: `${compact(input)} in`, tone: "input", section: "tokens" })
-        parts.push({ text: `${compact(output)} out`, tone: "output", section: "tokens" })
-      }
-
-      const limit = modelInfo?.limit?.context
-      const used = contextUsed(latestTokens)
-      if (limit && used > 0) {
-        const left = Math.max(0, Math.round((1 - used / limit) * 100))
-        parts.push({ text: `${left}% context left`, tone: "context", section: "context" })
-      }
-
-      return orderStatusParts(parts, options.sections) as StatusPart[]
+      return buildStatusParts({
+        agent: titleizedAgent, model: displayModelName, reasoning: variant, fast: fastMode,
+        directory: directory ? context.ui.format.path(directory) : undefined,
+        project: directory ? basename(directory) : undefined, branch, hostname: hostname(),
+        runState: context.data.session.status(sessionID) === "running" ? "Working" : "Ready",
+        sessionID, title: session?.title, cost: context.data.session.cost(sessionID), version: context.app.version,
+        tokens: session?.tokens, latestTokens, contextLimit: modelInfo?.limit?.context,
+      }, options().items, quota(), shouldShowQuota(options(), selectedProvider())) as StatusPart[]
     }
 
     const currentSession = () => {
@@ -240,17 +245,17 @@ export default Plugin.define({
     const StatusLine = () => {
       const line = createMemo(() => {
         const sessionID = currentSession()
-        return sessionID ? buildLine(sessionID) : quotaParts()
+        return sessionID ? buildLine(sessionID) : buildStatusParts({}, options().items, quota(), shouldShowQuota(options(), selectedProvider())) as StatusPart[]
       })
       return (
         <Show when={line().length ? line() : undefined}>
           {(parts) => (
-            <text wrapMode={options.wrapMode} flexShrink={1} minWidth={0}>
+            <text wrapMode={options().wrapMode} flexShrink={1} minWidth={0}>
               <For each={parts()}>
                 {(part, index) => (
                   <>
                     <Show when={index() > 0}>
-                      <span style={{ fg: context.theme.text.muted }}>{part.separator ?? options.separator}</span>
+                      <span style={{ fg: options().useThemeColors ? context.theme.text.muted : context.theme.text.base }}>{part.separator ?? options().separator}</span>
                     </Show>
                     <span style={{ fg: toneColor(part.tone) }}>{part.text}</span>
                   </>
@@ -271,6 +276,24 @@ export default Plugin.define({
       quotaPoller?.stop()
       for (const stop of stops) stop()
       clearInterval(timer)
+      dispose()
     }
+  },
+}
+
+export default Plugin.define({
+  id: "opencode-footer",
+  async setup(context) {
+    const file = configFile()
+    let initial: SettingsState
+    try {
+      initial = { settings: settingsFromOptions(context.options) }
+    } catch {
+      context.ui.toast.show({ message: "Invalid footer plugin options; settings were not loaded", variant: "error" })
+      return
+    }
+    const [stored, update] = context.storage.store<SettingsState>(settingsKey(file), { initial })
+    // Own reactive computations explicitly across the initial storage setup.
+    return createRoot((dispose) => FooterRuntime.mount(context, stored, update, dispose))
   },
 })

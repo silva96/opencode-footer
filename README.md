@@ -17,7 +17,7 @@ wraps to fit the terminal.
 - OpenCode V2.
 - For quotas: Codex CLI on `PATH` and a ChatGPT login in `~/.codex`.
 
-To use the footer without Codex, omit `quota` from `sections`.
+To use the footer without Codex, disable the quota items in `/footer items`.
 
 ## Install
 
@@ -49,39 +49,38 @@ opencode plugin update opencode-footer
 
 ## Configuration
 
-Edit the existing plugin entry in `cli.json` to set options. For example:
+Run **`/footer`** to choose between **Items** and **Settings**, or open either
+directly.
 
-```json
-{
-  "$schema": "https://opencode.ai/v2/cli.json",
-  "plugins": [
-    "-opencode.prompt.footer",
-    {
-      "package": "opencode-footer",
-      "options": {
-        "sections": ["model", "quota", "path", "branch", "context"]
-      }
-    }
-  ]
-}
-```
+Run **`/footer items`** to choose what appears in the footer:
 
-The default section order is `agent`, `model`, `fast`, `quota`, `path`, `branch`,
-`tokens`, `context`. Omit sections to hide them or reorder the list to move them.
+- Type to search; **↑/↓** to select.
+- **Space** toggles an item or theme colors.
+- **←/→** changes item order.
+- **Enter** saves; **Esc** cancels without changing the footer.
 
-| Option | Default | Description |
-|---|---|---|
-| `sections` | All, in the order above | Visible sections; names must be unique. |
-| `codexHome` | `~/.codex` | Codex login directory. Accepts absolute paths and `~/`. Overrides inherited `CODEX_HOME`. |
-| `refreshIntervalMs` | `15000` | Quota polling interval in milliseconds; integer, minimum `1000`. |
-| `requestTimeoutMs` | `12000` | RPC timeout in milliseconds; integer, minimum `1000`. |
-| `quotaProviders` | `["openai"]` | Provider IDs that enable quotas. `[]` disables them. |
-| `codexCommand` | `codex` | Executable name or path. |
-| `wrapMode` | `word` | `word`, `char`, or `none`. |
-| `separator` | ` · ` | Separator between items. |
+Available items include agent, model/reasoning, separate quota windows, directory,
+Git branch, token totals, context, hostname, session title/ID/cost, and run state.
+Unavailable information is omitted. Fast mode is inferred from the model name.
 
-For a custom OpenAI provider, add its ID to `quotaProviders`. Quotas always come
-from the login in `codexHome`; use the account you want to track.
+Run **`/footer settings`** (or **Ctrl+S** in the picker) for advanced settings:
+
+| Setting | Default |
+|---|---|
+| Codex home | `~/.codex` |
+| Codex executable | `codex` |
+| Quota providers | `openai` |
+| Quota refresh interval | `15000` ms |
+| Codex request timeout | `12000` ms |
+| Wrapping | `word` |
+| Separator | ` · ` |
+
+Changes are saved in OpenCode's durable local plugin storage, take effect
+immediately, and sync across running clients using the same configuration.
+Different CLI configuration paths keep separate settings, including Codex homes.
+OpenCode manages this storage under `~/.local/state/opencode`, or
+`$XDG_STATE_HOME/opencode` when set.
+Quotas come from the selected Codex home and are only polled for eligible providers.
 
 ## Troubleshooting
 
@@ -104,13 +103,14 @@ npm test
 ```
 
 To load a local checkout, set the plugin's `package` in `cli.json` to its absolute
-path. Multiple configurations can share that checkout with separate options.
+path. Multiple configurations can share that checkout with separate saved settings.
 After pulling changes, reopen each client.
 
-Tests use Node's built-in runner and a fake Codex subprocess. CI runs on Node 22
+Run `npm install --ignore-scripts --legacy-peer-deps` before testing. Tests use
+Node's built-in runner and a fake Codex subprocess. CI runs on Node 22
 and 24.
 
-See [Architecture](docs/ARCHITECTURE.md) for adding sections and quota sources.
+See [Architecture](docs/ARCHITECTURE.md) for adding footer items and quota sources.
 
 ## License
 

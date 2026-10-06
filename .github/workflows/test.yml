@@ -13,4 +13,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
+      - run: npm install --ignore-scripts --legacy-peer-deps
       - run: npm test

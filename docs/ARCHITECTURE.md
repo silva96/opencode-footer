@@ -6,7 +6,11 @@
 |---|---|
 | `tui.ts` | Local discovery entrypoint. |
 | `src/tui.tsx` | OpenCode/Solid adapter: selected model, session data, theme colors, lifecycle, and footer rendering. |
-| `src/options.mjs` | Portable defaults, option validation, provider eligibility, section visibility/order. |
+| `src/options.mjs` | Portable defaults, option validation, provider eligibility. |
+| `src/settings.mjs` | Profile-scoped storage keys and validated advanced settings. |
+| `src/configurator.tsx` | `/footer items` picker and `/footer settings` dialogs. |
+| `src/statusline-config.mjs` | Item catalog, immutable picker drafts and search. |
+| `src/status-parts.mjs` | Ordered footer items built from available session, machine, and quota data. |
 | `src/codex-quota.mjs` | Read-only JSON-RPC connection, polling, normalization, cache, and safe display text. |
 | `src/*.test.mjs` | Offline tests using fabricated rate-limit responses and subprocess streams. |
 
@@ -15,9 +19,9 @@ account configuration, model-provider hooks, or changes to OpenCode's core code.
 
 ## Rendering contract
 
-Each item has `text`, `tone`, and `section`, plus an optional `separator`.
-`orderStatusParts` filters hidden sections and applies the configured order,
-preserving item order within a section. Semantic theme colors are applied by the
+Each part has `text`, `tone`, and `item`, plus an optional `separator`.
+`buildStatusParts` filters unavailable data and applies the saved item order,
+preserving part order within an item. Semantic theme colors are applied by the
 renderer; data sources should not embed ANSI sequences.
 
 The plugin appends to `prompt.footer`. It does **not** replace the host's footer
@@ -27,9 +31,9 @@ full-parent width or absolute position: those can cover processing/cancel contro
 
 ## Add an information section
 
-1. Add a name to `DEFAULT_SECTIONS` in `options.mjs`.
-2. Collect the relevant data in `buildLine` in `tui.tsx` and append an item with that
-   `section`. Skip unavailable values instead of manufacturing defaults.
+1. Add an item to `STATUS_ITEMS` in `statusline-config.mjs`.
+2. Collect the relevant data in `buildLine` in `tui.tsx` and render it in
+   `status-parts.mjs`. Skip unavailable values instead of manufacturing defaults.
 3. Reuse a semantic tone, or add a new `StatusTone` and theme mapping.
 4. Extend option/ordering tests and document the section in the README.
 5. Test a narrow terminal, idle and processing states, provider switching, and
@@ -41,6 +45,21 @@ Normalize/validate it before starting processes, add a documented default, and
 write tests for both defaults and invalid values. Never default to a particular
 user's path, organization, account, or profile. Paths must be portable and secrets
 must not appear in options or examples.
+
+## Settings
+
+`context.storage.store` owns persistence and cross-client synchronization. Store
+data contains normalized `settings`.
+Its key is derived from the resolved CLI config path (including
+`OPENCODE_CONFIG_DIR` / XDG overrides). Inline plugin arrays get a separate scope.
+This is required because native TUI storage itself is shared across profiles.
+
+Initial plugin options seed the store once; thereafter, saved UI preferences take
+precedence. UI edits are validated inside the storage mutation and immediately
+update the footer and poller. The plugin does not modify `cli.json`.
+
+The item picker keeps an isolated draft: Esc discards it, Enter commits it. Opening
+advanced settings discards the unsaved picker draft; advanced edits save individually.
 
 ## Provider and quota lifecycle
 

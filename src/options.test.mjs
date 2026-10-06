@@ -2,14 +2,14 @@ import assert from "node:assert/strict"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
-import { DEFAULT_SECTIONS, normalizeOptions, orderStatusParts, shouldShowQuota } from "./options.mjs"
+import { DEFAULT_ITEMS, normalizeOptions, shouldShowQuota } from "./options.mjs"
 
 test("generic defaults use ~/.codex, word wrapping, and 15-second polling", () => {
   const options = normalizeOptions()
   assert.equal(options.codexHome, join(homedir(), ".codex"))
   assert.equal(options.refreshIntervalMs, 15000)
   assert.equal(options.wrapMode, "word")
-  assert.deepEqual(options.sections, DEFAULT_SECTIONS)
+  assert.deepEqual(options.items, DEFAULT_ITEMS)
 })
 
 test("quotas are visible only for a selected OpenAI provider", () => {
@@ -21,15 +21,9 @@ test("quotas are visible only for a selected OpenAI provider", () => {
 })
 
 test("removing quota disables it even for OpenAI; custom providers require opt-in", () => {
-  assert.equal(shouldShowQuota(normalizeOptions({ sections: ["model"] }), "openai"), false)
+  assert.equal(shouldShowQuota(normalizeOptions({ items: ["model-with-reasoning"] }), "openai"), false)
   assert.equal(shouldShowQuota(normalizeOptions({ quotaProviders: ["my-openai-provider"] }), "my-openai-provider"), true)
   assert.equal(shouldShowQuota(normalizeOptions({ quotaProviders: [] }), "openai"), false)
-})
-
-test("section order and visibility are extensible without mutating the input", () => {
-  const parts = [{ section: "path", text: "project" }, { section: "model", text: "model" }, { section: "model", text: "effort" }, { section: "quota", text: "quota" }]
-  assert.deepEqual(orderStatusParts(parts, ["model", "path"]).map((part) => part.text), ["model", "effort", "project"])
-  assert.equal(parts[0].text, "project")
 })
 
 test("expands portable home paths and accepts configurable polling/wrapping", () => {
@@ -40,7 +34,7 @@ test("expands portable home paths and accepts configurable polling/wrapping", ()
 })
 
 test("rejects invalid options before starting any processes", () => {
-  for (const options of [{ refreshIntervalMs: 0 }, { requestTimeoutMs: -1 }, { codexHome: "relative" }, { sections: ["unknown"] }, { sections: ["model", "model"] }, { quotaProviders: [null] }, { wrapMode: "invalid" }, { codexCommand: "" }]) {
+  for (const options of [{ refreshIntervalMs: 0 }, { requestTimeoutMs: -1 }, { codexHome: "relative" }, { items: ["unknown"] }, { items: ["model", "model"] }, { quotaProviders: [null] }, { wrapMode: "invalid" }, { codexCommand: "" }]) {
     assert.throws(() => normalizeOptions(options), TypeError)
   }
 })

@@ -1,7 +1,9 @@
 import { homedir } from "node:os"
 import { isAbsolute, join, normalize } from "node:path"
+import { QUOTA_ITEMS, validateItems } from "./statusline-config.mjs"
 
-export const DEFAULT_SECTIONS = ["agent", "model", "fast", "quota", "path", "branch", "tokens", "context"]
+export const DEFAULT_ITEMS = ["agent", "model-with-reasoning", "fast-mode", ...QUOTA_ITEMS,
+  "current-dir", "git-branch", "total-input-tokens", "total-output-tokens", "context-remaining"]
 
 const positiveInterval = (value, name, fallback) => {
   if (value === undefined) return fallback
@@ -10,10 +12,9 @@ const positiveInterval = (value, name, fallback) => {
 }
 
 export function normalizeOptions(options = {}) {
-  const sections = options.sections ?? DEFAULT_SECTIONS
-  if (!Array.isArray(sections) || sections.some((section) => !DEFAULT_SECTIONS.includes(section)) || new Set(sections).size !== sections.length) {
-    throw new TypeError("sections must contain unique, supported section names")
-  }
+  const items = options.items === undefined ? [...DEFAULT_ITEMS] : validateItems(options.items)
+  const useThemeColors = options.useThemeColors ?? true
+  if (typeof useThemeColors !== "boolean") throw new TypeError("useThemeColors must be a boolean")
   const quotaProviders = options.quotaProviders ?? ["openai"]
   if (!Array.isArray(quotaProviders) || quotaProviders.some((id) => typeof id !== "string" || !id.trim())) {
     throw new TypeError("quotaProviders must be an array of provider IDs")
@@ -30,7 +31,7 @@ export function normalizeOptions(options = {}) {
   const separator = options.separator ?? " · "
   if (typeof separator !== "string") throw new TypeError("separator must be text")
   return {
-    sections: [...sections], quotaProviders: [...quotaProviders], codexHome: normalize(codexHome),
+    items, useThemeColors, quotaProviders: [...quotaProviders], codexHome: normalize(codexHome),
     refreshIntervalMs: positiveInterval(options.refreshIntervalMs, "refreshIntervalMs", 15_000),
     requestTimeoutMs: positiveInterval(options.requestTimeoutMs, "requestTimeoutMs", 12_000),
     wrapMode, codexCommand, separator,
@@ -38,8 +39,5 @@ export function normalizeOptions(options = {}) {
 }
 
 export const shouldShowQuota = (options, providerID) =>
-  options.sections.includes("quota") && typeof providerID === "string" && options.quotaProviders.includes(providerID)
-
-export const orderStatusParts = (parts, sections) => parts
-  .filter((part) => sections.includes(part.section))
-  .sort((left, right) => sections.indexOf(left.section) - sections.indexOf(right.section))
+  options.items.some((id) => QUOTA_ITEMS.includes(id)) &&
+  typeof providerID === "string" && options.quotaProviders.includes(providerID)
