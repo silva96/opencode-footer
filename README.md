@@ -9,6 +9,13 @@ Codex account quotas in the native footer, with automatic wrapping and theme-awa
 colors. The native processing indicator and **Esc to cancel** stay in their own
 allocated space.
 
+## Preview
+
+![OpenCode session with opencode-footer showing model, Codex quotas, project, Git branch, token usage, and remaining context](https://raw.githubusercontent.com/silva96/opencode-footer/main/docs/images/footer-demo.png)
+
+*Demonstration content with the project path anonymized. Quota percentages are a
+point-in-time snapshot, not fixed values.*
+
 An illustrative session line:
 
 ```text
