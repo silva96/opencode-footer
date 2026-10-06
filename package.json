@@ -4,7 +4,14 @@
   "description": "A wrapping OpenCode V2 footer with model, session, and optional Codex quota information",
   "type": "module",
   "license": "MIT",
-  "repository": "github:silva96/opencode-footer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/silva96/opencode-footer.git"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
   "exports": { "./tui": "./src/tui.tsx" },
   "files": ["tui.ts", "src/tui.tsx", "src/options.mjs", "src/codex-quota.mjs", "README.md", "docs", "LICENSE"],
   "scripts": { "test": "node --test src/*.test.mjs" },

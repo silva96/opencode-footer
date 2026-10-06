@@ -1,5 +1,9 @@
 # opencode-footer
 
+[![npm version](https://img.shields.io/npm/v/opencode-footer)](https://www.npmjs.com/package/opencode-footer)
+[![Tests](https://github.com/silva96/opencode-footer/actions/workflows/test.yml/badge.svg)](https://github.com/silva96/opencode-footer/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 A configurable footer for **OpenCode V2**. Keep session information and optional
 Codex account quotas in the native footer, with automatic wrapping and theme-aware
 colors. The native processing indicator and **Esc to cancel** stay in their own
@@ -33,9 +37,36 @@ Build · GPT model high · Fast off · 5h 80% left · weekly 50% left · ~/proje
 Codex is optional: omit the `quota` section to use the other footer information
 without it. Node.js 22+ is needed only for running the standalone tests.
 
+## Install from npm / pnpm
+
+Available on [npm](https://www.npmjs.com/package/opencode-footer).
+pnpm uses the same registry. To install the package in a project:
+
+```sh
+pnpm add opencode-footer
+```
+
+For OpenCode, the simplest installation is to merge this into
+`~/.config/opencode/cli.json`. OpenCode resolves the package itself; a separate
+`pnpm add` is not required for this configuration:
+
+```json
+{
+  "$schema": "https://opencode.ai/v2/cli.json",
+  "plugins": [
+    "-opencode.prompt.footer",
+    { "package": "opencode-footer@0.1.0" }
+  ]
+}
+```
+
+Preserve existing settings and plugin entries, then reopen OpenCode. Pin the
+version for reproducible installations, and change it when upgrading. Each
+configuration can use the same package version with its own `options`.
+
 ## Install from GitHub
 
-This repository is not yet published to npm. Clone it locally:
+For development or a shared local checkout, clone the repository:
 
 ```sh
 git clone https://github.com/silva96/opencode-footer.git "$HOME/opencode-footer"
@@ -90,7 +121,7 @@ Plugin options belong in the same `cli.json` entry:
   "plugins": [
     "-opencode.prompt.footer",
     {
-      "package": "/absolute/path/opencode-footer",
+      "package": "opencode-footer@0.1.0",
       "options": {
         "sections": ["agent", "model", "fast", "quota", "path", "branch", "tokens", "context"],
         "codexHome": "~/.codex",
