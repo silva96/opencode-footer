@@ -12,13 +12,10 @@ wraps to fit the terminal.
 
 ![OpenCode session with opencode-footer showing model, Codex quotas, project, Git branch, token usage, and remaining context](https://raw.githubusercontent.com/silva96/opencode-footer/main/docs/images/footer-demo.png)
 
-*Demo session; project path anonymized.*
-
 ## Requirements
 
-- OpenCode V2. Tested on 2.0.22.
+- OpenCode V2.
 - For quotas: Codex CLI on `PATH` and a ChatGPT login in `~/.codex`.
-  Tested on Codex CLI 0.160.0.
 
 To use the footer without Codex, omit `quota` from `sections`.
 
@@ -49,9 +46,6 @@ Reopen OpenCode. To update:
 ```sh
 opencode plugin update opencode-footer
 ```
-
-To pin a release, use `opencode-footer@0.1.0` as the package specifier.
-See [OpenCode's plugin docs](https://opencode.ai/v2/docs/plugins#manage).
 
 ## Configuration
 
@@ -88,22 +82,6 @@ The default section order is `agent`, `model`, `fast`, `quota`, `path`, `branch`
 
 For a custom OpenAI provider, add its ID to `quotaProviders`. Quotas always come
 from the login in `codexHome`; use the account you want to track.
-
-## Quotas
-
-Quotas refresh every 15 seconds by default while an OpenAI provider is selected.
-Switching to another provider hides them and stops polling.
-
-The plugin uses read-only requests to [Codex App Server](https://learn.chatgpt.com/docs/app-server).
-Codex handles authentication. Results are cached in memory.
-
-- Remaining quota is `100 - usedPercent`.
-- Labels and available windows come from the server response.
-- Failed refreshes keep the last result and mark it `(stale)`.
-- Expired cached windows show `—` until the next successful response.
-
-Context remaining is estimated from token usage and the model's context limit.
-The Fast indicator is inferred from `fast` in the model's name or ID.
 
 ## Troubleshooting
 
