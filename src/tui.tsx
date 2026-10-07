@@ -64,7 +64,8 @@ type StatusTone =
   | "effortHigh"
   | "effortXhigh"
   | "effortMax"
-type StatusPart = { text: string; tone: StatusTone; item: string; separator?: string; color?: string | Context["theme"]["text"]["base"] }
+type PetState = "idle" | "working" | "thinking" | "sleeping" | "error" | "happy"
+type StatusPart = { text: string; tone: StatusTone; item: string; separator?: string; color?: string | Context["theme"]["text"]["base"]; petState?: PetState }
 
 const WorkingIndicator = () => {
   const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
@@ -75,6 +76,36 @@ const WorkingIndicator = () => {
   })
   return <span>{frames[frame()]} Working</span>
 }
+
+const FooterPet = (props: { state: PetState; sessionID: string }) => {
+  const frames: Record<PetState, string[]> = {
+    idle: ["=^._.^=", "=^-.-^="],
+    working: ["=^o.o^=", "=^-.-^="],
+    thinking: ["=^-.o^=", "=^-.-^="],
+    sleeping: ["=^-.-^=", "=^z.z^="],
+    error: ["=^x.x^=", "=^-.-^="],
+    happy: ["=^ᵔ.ᵔ^=", "=^-.-^="],
+  }
+  const [frame, setFrame] = createSignal(0)
+  const [sleeping, setSleeping] = createSignal(false)
+  createEffect(() => {
+    const state = props.state
+    props.sessionID
+    setFrame(0)
+    setSleeping(false)
+    let sleepTimer: ReturnType<typeof setTimeout> | undefined
+    if (state === "idle") sleepTimer = setTimeout(() => setSleeping(true), 45_000)
+    const interval = { idle: 1_200, working: 450, thinking: 900, sleeping: 1_800, error: 600, happy: 700 } as const
+    const timer = setInterval(() => setFrame((value) => value + 1), interval[state])
+    onCleanup(() => {
+      clearInterval(timer)
+      if (sleepTimer) clearTimeout(sleepTimer)
+    })
+  })
+  const currentState = () => sleeping() && props.state === "idle" ? "sleeping" : props.state
+  return <span>{frames[currentState()][frame() % 2]}</span>
+}
+
 type SettingsState = {
   settings?: ReturnType<typeof settingsFromOptions>
 }
@@ -130,6 +161,8 @@ const FooterRuntime = {
     })
     const [revision, setRevision] = createSignal(0)
     const [quota, setQuota] = createSignal<QuotaState>({ status: "loading", windows: [], updatedAt: null })
+    const [petMood, setPetMood] = createSignal<{ sessionID: string; state: "thinking" | "error" | "happy" }>()
+    let petMoodTimer: ReturnType<typeof setTimeout> | undefined
     let quotaPoller: ReturnType<typeof createCodexQuotaPoller> | undefined
     let pollerKey: string | undefined
     const selectedProvider = () => {
@@ -160,6 +193,19 @@ const FooterRuntime = {
     })
     const location = context.location ?? context.data.location.default()
     const refresh = () => setRevision((value) => value + 1)
+    const clearPetMood = (sessionID: string) => {
+      if (petMood()?.sessionID !== sessionID) return
+      if (petMoodTimer) clearTimeout(petMoodTimer)
+      petMoodTimer = undefined
+      setPetMood(undefined)
+      refresh()
+    }
+    const showPetMood = (sessionID: string, state: "error" | "happy", duration: number) => {
+      if (petMoodTimer) clearTimeout(petMoodTimer)
+      setPetMood({ sessionID, state })
+      petMoodTimer = setTimeout(() => clearPetMood(sessionID), duration)
+      refresh()
+    }
     const toneColor = (tone: StatusTone) => {
       if (!options().useThemeColors) return context.theme.text.base
       switch (tone) {
@@ -197,6 +243,18 @@ const FooterRuntime = {
       context.data.on("session.usage.updated", refresh),
       context.data.on("session.model.selected", refresh),
       context.data.on("session.agent.selected", refresh),
+      context.data.on("session.reasoning.started", (event) => {
+        if (petMoodTimer) clearTimeout(petMoodTimer)
+        petMoodTimer = undefined
+        setPetMood({ sessionID: event.data.sessionID, state: "thinking" })
+        refresh()
+      }),
+      context.data.on("session.text.started", (event) => {
+        if (petMood()?.sessionID === event.data.sessionID && petMood()?.state === "thinking") clearPetMood(event.data.sessionID)
+      }),
+      context.data.on("session.execution.succeeded", (event) => showPetMood(event.data.sessionID, "happy", 2_000)),
+      context.data.on("session.execution.failed", (event) => showPetMood(event.data.sessionID, "error", 3_000)),
+      context.data.on("session.execution.interrupted", (event) => clearPetMood(event.data.sessionID)),
     ]
     const timer = setInterval(() => {
       refresh()
@@ -242,6 +300,7 @@ const FooterRuntime = {
         directory: directory ? context.ui.format.path(directory) : undefined,
         project: directory ? basename(directory) : undefined, branch, hostname: hostname(),
         runState: context.data.session.status(sessionID) === "running" ? "Working" : "Ready",
+        petState: petMood()?.sessionID === sessionID ? petMood()?.state : undefined,
         sessionID, title: session?.title, cost: context.data.session.cost(sessionID), version: context.app.version,
         tokens: session?.tokens, latestTokens, contextLimit: modelInfo?.limit?.context,
       }, options().items, quota(), shouldShowQuota(options(), selectedProvider())) as StatusPart[]
@@ -313,8 +372,12 @@ const FooterRuntime = {
                               : ["model", "model-with-reasoning"].includes(part.item)
                               ? () => context.keymap.dispatch("model.list") : undefined}
                         >
-                          <Show when={part.item === "run-state" && part.text === "Working"} fallback={part.text}>
-                            <WorkingIndicator />
+                          <Show when={part.item === "pet"} fallback={
+                            <Show when={part.item === "run-state" && part.text === "Working"} fallback={part.text}>
+                              <WorkingIndicator />
+                            </Show>
+                          }>
+                            <FooterPet state={part.petState ?? "idle"} sessionID={currentSession() ?? ""} />
                           </Show>
                         </text>
                       </>
@@ -337,6 +400,7 @@ const FooterRuntime = {
       quotaPoller?.stop()
       for (const stop of stops) stop()
       clearInterval(timer)
+      if (petMoodTimer) clearTimeout(petMoodTimer)
       dispose()
     }
   },

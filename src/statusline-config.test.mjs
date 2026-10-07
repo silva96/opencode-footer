@@ -69,6 +69,17 @@ test("parts follow item order, omit unavailable data, and use actual quota windo
   assert.deepEqual(buildStatusParts({}, ["five-hour-limit", "weekly-limit"], quota, false), [])
 })
 
+test("the optional pet item is available and follows session activity", () => {
+  const catalog = draftOptions(createDraft({ items: ["agent"], useThemeColors: true }))
+  assert.ok(catalog.some((option) => option.value === "pet" && option.description.includes("Animated cat")))
+  const parts = buildStatusParts({ runState: "Working" }, ["pet"], { windows: [] }, false)
+  assert.deepEqual(parts, [{ item: "pet", text: "pet", tone: "context", petState: "working" }])
+  assert.deepEqual(buildStatusParts({ runState: "Ready" }, ["pet"], { windows: [] }, false), [
+    { item: "pet", text: "pet", tone: "path", petState: "idle" },
+  ])
+  assert.equal(buildStatusParts({ runState: "Ready", petState: "error" }, ["pet"], { windows: [] }, false)[0].petState, "error")
+})
+
 test("context unknown, quotas expired, and zero token totals are handled without fabricated values", () => {
   const quota = { status: "stale", windows: [{ label: "5h", remaining: 75, resetsAt: 1 }], updatedAt: 0 }
   assert.deepEqual(buildStatusParts({}, ["context-remaining", "used-tokens"], quota, false), [])

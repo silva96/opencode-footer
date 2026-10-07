@@ -22,6 +22,7 @@ export const STATUS_ITEMS = [
   { id: "session-title", description: "Current session title (omitted when unnamed)" },
   { id: "session-cost", description: "Reported session cost in USD (omitted when zero)" },
   { id: "opencode-version", description: "OpenCode application version" },
+  { id: "pet", description: "Animated cat that reflects session activity" },
 ]
 
 export const QUOTA_ITEMS = ["five-hour-limit", "weekly-limit", "other-limits"]

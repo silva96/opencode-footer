@@ -62,6 +62,9 @@ Run **`/footer items`** to choose what appears in the footer:
 Available items include agent, model/reasoning, separate quota windows, directory,
 Git branch, token totals, context, hostname, session title/ID/cost, and run state.
 Unavailable information is omitted. Fast mode is inferred from the model name.
+An optional animated cat is available as the **Pet** item. It sleeps after being
+idle, thinks during reasoning, and reacts to completed or failed runs. Enable it
+with `/footer items`.
 The agent item shows the session's committed agent; after selecting another agent,
 the label updates when you send a prompt. OpenCode 2.0.22 does not expose the
 pending agent selection to plugins.

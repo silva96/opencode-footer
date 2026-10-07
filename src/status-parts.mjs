@@ -18,10 +18,11 @@ export const effortTone = (effort) => ({
 /** Render available data in item order; missing values never produce separators. */
 export function buildStatusParts(data, items, quota, quotaEnabled, now = Date.now()) {
   const values = new Map()
-  const put = (id, text, tone = "model", separator, color) => {
+  const put = (id, text, tone = "model", separator, color, petState) => {
     if (text === undefined || text === null || text === "") return
     const parts = values.get(id) ?? []
-    parts.push({ item: id, text, tone, ...(separator ? { separator } : {}), ...(color !== undefined ? { color } : {}) })
+    parts.push({ item: id, text, tone, ...(separator ? { separator } : {}), ...(color !== undefined ? { color } : {}),
+      ...(petState ? { petState } : {}) })
     values.set(id, parts)
   }
   put("agent", data.agent, "agent", undefined, data.agentColor)
@@ -35,6 +36,8 @@ export function buildStatusParts(data, items, quota, quotaEnabled, now = Date.no
   put("project-name", data.project, "path")
   put("hostname", data.hostname, "path")
   put("run-state", data.runState, data.runState === "Working" ? "context" : "path")
+  put("pet", "pet", data.runState === "Working" ? "context" : "path", undefined, undefined,
+    data.petState ?? (data.runState === "Working" ? "working" : "idle"))
   put("session-id", data.sessionID, "path")
   put("session-title", data.title, "agent")
   put("opencode-version", data.version, "model")

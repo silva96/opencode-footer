@@ -5,7 +5,7 @@
 | File | Responsibility |
 |---|---|
 | `tui.ts` | Local discovery entrypoint. |
-| `src/tui.tsx` | OpenCode/Solid adapter: selected model, session data, theme colors, lifecycle, and footer rendering. |
+| `src/tui.tsx` | OpenCode/Solid adapter: selected model, session data, theme colors, lifecycle, footer rendering, and state-aware animated pet. |
 | `src/options.mjs` | Portable defaults, option validation, provider eligibility. |
 | `src/settings.mjs` | Profile-scoped storage keys and validated advanced settings. |
 | `src/configurator.tsx` | `/footer items` picker and `/footer settings` dialogs. |

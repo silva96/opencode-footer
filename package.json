@@ -1,6 +1,6 @@
 {
   "name": "opencode-footer",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "A wrapping OpenCode V2 footer with model, session, and optional Codex quota information",
   "type": "module",
   "license": "MIT",
