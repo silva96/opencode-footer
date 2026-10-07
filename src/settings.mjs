@@ -5,6 +5,7 @@ import { join, resolve } from "node:path"
 import { normalizeOptions } from "./options.mjs"
 
 export const ADVANCED_SETTINGS = [
+  { id: "useThemeColors", title: "Use theme colors", description: "Toggle colors from the active theme" },
   { id: "codexHome", title: "Codex home", description: "Codex login directory; absolute path or ~/" },
   { id: "codexCommand", title: "Codex executable", description: "Executable name or path" },
   { id: "quotaProviders", title: "Quota providers", description: "Comma-separated provider IDs; empty disables quotas" },
@@ -20,7 +21,9 @@ export function settingsFromOptions(raw = {}) {
 
 export function parseSetting(settings, id, text) {
   if (!ADVANCED_SETTINGS.some((setting) => setting.id === id)) throw new TypeError("Unknown setting")
+  if (id === "useThemeColors" && !["true", "false"].includes(text)) throw new TypeError("Use theme colors must be true or false")
   const value = id === "quotaProviders" ? text.split(",").map((id) => id.trim()).filter(Boolean)
+    : id === "useThemeColors" ? text === "true"
     : ["refreshIntervalMs", "requestTimeoutMs"].includes(id) ? Number(text) : text
   return settingsFromOptions({ ...settings, [id]: value })
 }

@@ -1,15 +1,16 @@
 /** @jsxImportSource @opentui/solid */
 import { Plugin } from "@opencode/plugin/tui"
 import type { Context } from "@opencode/plugin/tui/context"
-import { createEffect, createMemo, createRoot, createSignal, For, Show } from "solid-js"
+import { createEffect, createMemo, createRoot, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { basename } from "node:path"
 import { hostname } from "node:os"
 import { createCodexQuotaPoller } from "./codex-quota.mjs"
 import { shouldShowQuota } from "./options.mjs"
 import { buildStatusParts } from "./status-parts.mjs"
-import { footerCommandAction } from "./statusline-config.mjs"
-import { configureSettings, configureStatusLine } from "./configurator"
+import { fastModelSwitchTarget, footerCommandAction, QUOTA_ITEMS } from "./statusline-config.mjs"
+import { configureSettings, configureStatusLine, showQuotaUsage } from "./configurator"
 import { configFile, settingsFromOptions, settingsKey } from "./settings.mjs"
+import { switchPromptModel } from "./model-switch.mjs"
 
 type QuotaState = {
   status: "loading" | "ready" | "stale" | "unavailable"
@@ -63,6 +64,16 @@ type StatusTone =
   | "effortXhigh"
   | "effortMax"
 type StatusPart = { text: string; tone: StatusTone; item: string; separator?: string }
+
+const WorkingIndicator = () => {
+  const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+  const [frame, setFrame] = createSignal(0)
+  onMount(() => {
+    const timer = setInterval(() => setFrame((value) => (value + 1) % frames.length), 100)
+    onCleanup(() => clearInterval(timer))
+  })
+  return <span>{frames[frame()]} Working</span>
+}
 type SettingsState = {
   settings?: ReturnType<typeof settingsFromOptions>
 }
@@ -243,6 +254,38 @@ const FooterRuntime = {
     }
 
     const StatusLine = () => {
+      let switchingModel = false
+      const toggleFast = async () => {
+        const sessionID = currentSession()
+        if (!sessionID || !location || switchingModel) return
+        switchingModel = true
+        try {
+          await context.data.location.model.sync(location)
+          const selected = context.ui.model.current()
+          const session = context.data.session.get(sessionID) as SessionRecord | undefined
+          const modelID = selected?.modelID ?? session?.model?.id
+          const providerID = selected?.providerID ?? session?.model?.providerID
+          const variant = selected ? selected.variant : session?.model?.variant
+          const models = context.data.location.model.list(location) ?? []
+          const current = models.find((model) => model.providerID === providerID &&
+            (model.id === modelID || model.modelID === modelID))
+          const target = current && fastModelSwitchTarget(current, models, variant)
+          if (!target) {
+            context.ui.toast.show({
+              message: `No matching Fast/non-Fast model found${variant ? `; keeping ${variant}` : ""}`,
+              variant: "warning",
+            })
+            return
+          }
+          if (!modelID || !providerID) throw new Error("No selected model")
+          await switchPromptModel(context, sessionID, { modelID, providerID, variant }, target)
+          refresh()
+        } catch {
+          context.ui.toast.show({ message: "Could not switch fast mode", variant: "error" })
+        } finally {
+          switchingModel = false
+        }
+      }
       const line = createMemo(() => {
         const sessionID = currentSession()
         return sessionID ? buildLine(sessionID) : buildStatusParts({}, options().items, quota(), shouldShowQuota(options(), selectedProvider())) as StatusPart[]
@@ -250,18 +293,36 @@ const FooterRuntime = {
       return (
         <Show when={line().length ? line() : undefined}>
           {(parts) => (
-            <text wrapMode={options().wrapMode} flexShrink={1} minWidth={0}>
-              <For each={parts()}>
-                {(part, index) => (
-                  <>
-                    <Show when={index() > 0}>
-                      <span style={{ fg: options().useThemeColors ? context.theme.text.muted : context.theme.text.base }}>{part.separator ?? options().separator}</span>
-                    </Show>
-                    <span style={{ fg: toneColor(part.tone) }}>{part.text}</span>
-                  </>
-                )}
-              </For>
-            </text>
+            <box flexDirection="column" flexShrink={1} minWidth={0}>
+              <box flexDirection="row" flexWrap="wrap" flexShrink={1} minWidth={0}>
+                <For each={parts()}>
+                  {(part, index) => {
+                    const isQuota = QUOTA_ITEMS.includes(part.item)
+                    const isEffort = ["effortLow", "effortMedium", "effortHigh", "effortXhigh", "effortMax"].includes(part.tone)
+                    return (
+                      <>
+                        <Show when={index() > 0}>
+                          <text fg={options().useThemeColors ? context.theme.text.muted : context.theme.text.base}>{part.separator ?? options().separator}</text>
+                        </Show>
+                        <text
+                          wrapMode={options().wrapMode}
+                          fg={toneColor(part.tone)}
+                          onMouseUp={isQuota ? () => showQuotaUsage(context, quota)
+                            : part.item === "fast-mode" ? () => void toggleFast()
+                            : isEffort ? () => context.keymap.dispatch("variant.list")
+                              : ["model", "model-with-reasoning"].includes(part.item)
+                              ? () => context.keymap.dispatch("model.list") : undefined}
+                        >
+                          <Show when={part.item === "run-state" && part.text === "Working"} fallback={part.text}>
+                            <WorkingIndicator />
+                          </Show>
+                        </text>
+                      </>
+                    )
+                  }}
+                </For>
+              </box>
+            </box>
           )}
         </Show>
       )

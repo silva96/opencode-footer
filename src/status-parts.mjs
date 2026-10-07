@@ -56,13 +56,13 @@ export function buildStatusParts(data, items, quota, quotaEnabled, now = Date.no
     }
   }
   if (quotaEnabled) {
-    const displayed = quotaDisplayParts(quota, now)
-    if (!quota.windows.length) put("quota-status", displayed[0].text, "fastOff")
-    else quota.windows.forEach((window, index) => {
+    const displayed = quotaDisplayParts(quota, now, false)
+    quota.windows.forEach((window, index) => {
       const id = window.label === "5h" ? "five-hour-limit" : window.label === "weekly" ? "weekly-limit" : "other-limits"
       const part = displayed[index]
       put(id, part.text, part.stale ? "fastOff" : part.remaining !== null && part.remaining <= 10 ? "effortXhigh" : "context")
     })
   }
-  return items.flatMap((id) => values.get(id) ?? [])
+  const parts = items.flatMap((id) => values.get(id) ?? [])
+  return parts
 }

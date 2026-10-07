@@ -55,18 +55,21 @@ directly.
 Run **`/footer items`** to choose what appears in the footer:
 
 - Type to search; **↑/↓** to select.
-- **Space** toggles an item or theme colors.
-- **←/→** changes item order.
-- **Enter** saves; **Esc** cancels without changing the footer.
+- **Space** or **Enter** toggles an item.
+- **←/→** changes item order; changes apply immediately.
+- **Esc** closes the picker.
 
 Available items include agent, model/reasoning, separate quota windows, directory,
 Git branch, token totals, context, hostname, session title/ID/cost, and run state.
 Unavailable information is omitted. Fast mode is inferred from the model name.
+The Working run state includes an animated spinner while the session is running.
+Quotas appear only once data is available; loading and unavailable messages are hidden.
 
 Run **`/footer settings`** (or **Ctrl+S** in the picker) for advanced settings:
 
 | Setting | Default |
 |---|---|
+| Use theme colors | `true` (select to toggle) |
 | Codex home | `~/.codex` |
 | Codex executable | `codex` |
 | Quota providers | `openai` |
@@ -81,6 +84,18 @@ Different CLI configuration paths keep separate settings, including Codex homes.
 OpenCode manages this storage under `~/.local/state/opencode`, or
 `$XDG_STATE_HOME/opencode` when set.
 Quotas come from the selected Codex home and are only polled for eligible providers.
+
+## Clickable footer items
+
+| Item | Click action |
+|---|---|
+| Model name (`model` or the name in `model-with-reasoning`) | Opens OpenCode's model picker. |
+| Reasoning effort (`reasoning` or the effort in `model-with-reasoning`) | Opens OpenCode's variant picker. |
+| Fast on/off (`fast-mode`) | Switches to the same-name fast/non-fast model in the same provider, preserving the current effort. If no counterpart exists, the model stays unchanged. |
+| Quota (`five-hour-limit`, `weekly-limit`, `other-limits`) | Opens the Codex Usage modal with remaining bars/percentages and local reset times. Labels, empty blocks, and reset times are dimmed. |
+
+All other footer items are informational only. Clicking requires mouse support in
+your terminal and OpenCode; no hover action is needed.
 
 ## Troubleshooting
 

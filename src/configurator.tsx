@@ -1,5 +1,5 @@
 /** @jsxImportSource @opentui/solid */
-import { createEffect, createMemo, createSignal, For, onMount } from "solid-js"
+import { createEffect, createMemo, createSignal, For, onMount, untrack } from "solid-js"
 import { useTerminalDimensions } from "@opentui/solid"
 import {
   createDraft, draftOptions, draftPreferences, moveDraft, searchDraftOptions, toggleDraft,
@@ -7,8 +7,44 @@ import {
 import type { Context } from "@opencode/plugin/tui/context"
 import type { InputRenderable, ScrollBoxRenderable } from "@opentui/core"
 import { ADVANCED_SETTINGS, parseSetting } from "./settings.mjs"
+import { quotaDetails } from "./codex-quota.mjs"
 
-type Preferences = { items: string[]; useThemeColors: boolean }
+type Preferences = { items: string[] }
+
+export function showQuotaUsage(context: Context, quota: () => Parameters<typeof quotaDetails>[0]) {
+  context.ui.dialog.show(() => {
+    onMount(() => context.ui.dialog.set({ size: "large", centered: true }))
+    const rows = createMemo(() => quotaDetails(quota()))
+    const labelWidth = createMemo(() => Math.max(0, ...rows().map((row) => row.label.length)) + 3)
+    context.keymap.layer(() => ({
+      mode: "global", priority: 100,
+      commands: [
+        { bind: "escape", run: () => context.ui.dialog.clear() },
+        { bind: "return", run: () => context.ui.dialog.clear() },
+      ],
+    }))
+    return (
+      <box padding={1} gap={1}>
+        <text fg={context.theme.text.base}>Codex Usage</text>
+        <box>
+          <For each={rows()} fallback={<text fg={context.theme.text.muted}>Quota data unavailable</text>}>
+            {(row) => (
+              <text wrapMode="word">
+                <span style={{ fg: context.theme.text.muted }}>{row.label.padEnd(labelWidth())}</span>
+                <span style={{ fg: context.theme.text.base }}>{row.remaining === null ? "—" : "["}</span>
+                <span style={{ fg: context.theme.text.base }}>{row.filled}</span>
+                <span style={{ fg: context.theme.text.muted }}>{row.empty}</span>
+                <span style={{ fg: context.theme.text.base }}>{row.remaining === null ? "" : `] ${row.remaining}% left`}</span>
+                <span style={{ fg: context.theme.text.muted }}>{row.reset}{row.stale ? " (stale)" : ""}</span>
+              </text>
+            )}
+          </For>
+        </box>
+        <text fg={context.theme.text.muted} onMouseUp={() => context.ui.dialog.clear()}>enter/esc close</text>
+      </box>
+    )
+  })
+}
 
 export async function configureStatusLine(
   context: Context,
@@ -21,8 +57,12 @@ export async function configureStatusLine(
       // show() resets dialog sizing, so set it after the dialog is mounted.
       onMount(() => context.ui.dialog.set({ size: "large", centered: true }))
       const [draft, setDraft] = createSignal(createDraft(preferences))
+      // Don't subscribe the dialog's render factory to its editable draft.
+      let committed = untrack(draft)
+      let writes = Promise.resolve()
+      let pendingWrites = 0
       const [query, setQuery] = createSignal("")
-      const [selected, setSelected] = createSignal("use-theme-colors")
+      const [selected, setSelected] = createSignal(preferences.items[0] ?? "agent")
       const [saving, setSaving] = createSignal(false)
       const dimensions = useTerminalDimensions()
       const options = createMemo(() => searchDraftOptions(query(), draftOptions(draft())))
@@ -30,6 +70,32 @@ export async function configureStatusLine(
       const current = () => options()[index()]?.value
       const [input, setInput] = createSignal<InputRenderable>()
       const [list, setList] = createSignal<ScrollBoxRenderable>()
+      const apply = (next: ReturnType<typeof createDraft>) => {
+        if (next === draft()) return
+        setDraft(next)
+        pendingWrites += 1
+        setSaving(true)
+        writes = writes.then(async () => {
+          try {
+            await save(draftPreferences(next))
+            committed = next
+          } catch {
+            if (draft() === next) setDraft(committed)
+            context.ui.toast.show({ message: "Could not save status line settings", variant: "error" })
+          }
+        }).finally(() => {
+          pendingWrites -= 1
+          if (!pendingWrites) setSaving(false)
+        })
+      }
+      const toggleSelected = () => {
+        const id = current()
+        if (id) void apply(toggleDraft(draft(), id))
+      }
+      const moveSelected = (direction: number) => {
+        const id = current()
+        if (id) void apply(moveDraft(draft(), id, direction))
+      }
       const revealSelection = () => {
         const id = current()
         const viewport = list()
@@ -52,23 +118,12 @@ export async function configureStatusLine(
         commands: [
           { bind: "up", run: () => navigate(-1) },
           { bind: "down", run: () => navigate(1) },
-          { bind: "space", run: () => { if (current()) setDraft((value) => toggleDraft(value, current())) } },
-          { bind: "left", run: () => { if (current()) setDraft((value) => moveDraft(value, current(), -1)) } },
-          { bind: "right", run: () => { if (current()) setDraft((value) => moveDraft(value, current(), 1)) } },
+          { bind: "space", run: toggleSelected },
+          { bind: "left", run: () => moveSelected(-1) },
+          { bind: "right", run: () => moveSelected(1) },
           { bind: "escape", run: () => { if (!saving()) context.ui.dialog.clear() } },
           { bind: "ctrl+s", run: () => { if (!saving()) void advanced() } },
-          { bind: "return", run: async () => {
-            if (saving()) return
-            setSaving(true)
-            try {
-              await save(draftPreferences(draft()))
-              context.ui.dialog.clear()
-              context.ui.toast.show({ message: "Status line saved", variant: "success" })
-            } catch {
-              setSaving(false)
-              context.ui.toast.show({ message: "Could not save status line settings", variant: "error" })
-            }
-          } },
+          { bind: "return", run: toggleSelected },
         ],
       }))
       return (
@@ -81,7 +136,7 @@ export async function configureStatusLine(
             <For each={options()}>{(option) => (
               <text id={`footer-item.${option.value}`} wrapMode="word" flexShrink={0}
                 onSizeChange={() => { if (option.value === current()) revealSelection() }}
-                onMouseUp={() => { setSelected(option.value); setDraft((value) => toggleDraft(value, option.value)) }}>
+                onMouseUp={() => { setSelected(option.value); void apply(toggleDraft(draft(), option.value)) }}>
                 <span style={{ fg: option.value === current() ? context.theme.text.feedback.info.base : context.theme.text.base }}>
                   {option.value === current() ? "› " : "  "}{option.title}
                 </span>
@@ -90,8 +145,8 @@ export async function configureStatusLine(
             )}</For>
           </scrollbox>
           <text fg={context.theme.text.muted}>{options().length ? `${index() + 1}/${options().length}` : "No matching items"}</text>
-          <text fg={context.theme.text.muted}>space toggle · ←/→ reorder</text>
-          <text fg={context.theme.text.muted}>enter save · esc cancel · ctrl+s settings</text>
+          <text fg={context.theme.text.muted}>enter/space toggle · ←/→ reorder</text>
+          <text fg={context.theme.text.muted}>changes apply immediately · esc close · ctrl+s settings</text>
         </box>
       )
     }, closed)
@@ -108,6 +163,14 @@ export async function configureSettings(context: Context, current: () => Record<
       })),
     })
     if (id === undefined) return
+    if (id === "useThemeColors") {
+      try {
+        await save({ useThemeColors: !current().useThemeColors })
+      } catch {
+        context.ui.toast.show({ message: "Could not save status line settings", variant: "error" })
+      }
+      continue
+    }
     const existing = current()[id]
     const value = await context.ui.dialog.prompt({
       title: ADVANCED_SETTINGS.find((setting) => setting.id === id)!.title,

@@ -32,8 +32,19 @@ export function parseQuotaWindows(result) {
   return windows
 }
 
+function resetText(resetsAt, now) {
+  if (resetsAt === null) return ""
+  const reset = new Date(resetsAt * 1_000)
+  const current = new Date(now)
+  const time = reset.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
+  const sameDay = reset.getFullYear() === current.getFullYear() &&
+    reset.getMonth() === current.getMonth() && reset.getDate() === current.getDate()
+  const date = sameDay ? "" : ` on ${reset.toLocaleDateString(undefined, { day: "numeric", month: "short" })}`
+  return ` (resets ${time}${date})`
+}
+
 /** @param {QuotaState} state */
-export function quotaDisplayParts(state, now = Date.now()) {
+export function quotaDisplayParts(state, now = Date.now(), includeReset = true) {
   if (!state.windows.length) {
     return [{ text: state.status === "loading" ? "Codex quota …" : "Codex quota unavailable", remaining: null, stale: true }]
   }
@@ -41,9 +52,28 @@ export function quotaDisplayParts(state, now = Date.now()) {
     const expired = window.resetsAt !== null && window.resetsAt * 1_000 <= now
     const stale = state.status !== "ready" || expired
     return {
-      text: expired ? `${window.label} —` : `${window.label} ${window.remaining}% left${stale ? " (stale)" : ""}`,
+      text: expired ? `${window.label} —` : `${window.label} ${window.remaining}% left${includeReset ? resetText(window.resetsAt, now) : ""}${stale ? " (stale)" : ""}`,
       remaining: expired ? null : window.remaining,
       stale,
+    }
+  })
+}
+
+/** Structured usage rows for the modal; keep label/reset styling out of data.
+ * @param {QuotaState} state
+ */
+export function quotaDetails(state, now = Date.now()) {
+  const displayed = quotaDisplayParts(state, now, false)
+  return state.windows.map((window, index) => {
+    const part = displayed[index]
+    const filled = part.remaining === null ? 0 : Math.round(part.remaining / 5)
+    return {
+      label: `${window.label === "weekly" ? "Weekly" : window.label} limit:`,
+      filled: part.remaining === null ? "" : "█".repeat(filled),
+      empty: part.remaining === null ? "" : "░".repeat(20 - filled),
+      remaining: part.remaining,
+      reset: part.remaining === null ? "" : resetText(window.resetsAt, now),
+      stale: part.stale,
     }
   })
 }
@@ -159,6 +189,9 @@ export function createCodexQuotaPoller({
   }
 
   const read = async () => {
+    // When there is no cached window to keep visible, reflect each in-flight
+    // attempt instead of leaving the previous unavailable state on screen.
+    if (!state.windows.length) publish({ status: "loading", windows: [], updatedAt: null })
     try {
       await connect()
       const revision = accountRevision

@@ -34,7 +34,7 @@ test("expands portable home paths and accepts configurable polling/wrapping", ()
 })
 
 test("rejects invalid options before starting any processes", () => {
-  for (const options of [{ refreshIntervalMs: 0 }, { requestTimeoutMs: -1 }, { codexHome: "relative" }, { items: ["unknown"] }, { items: ["model", "model"] }, { quotaProviders: [null] }, { wrapMode: "invalid" }, { codexCommand: "" }]) {
+  for (const options of [{ refreshIntervalMs: 0 }, { requestTimeoutMs: -1 }, { codexHome: "relative" }, { items: "model" }, { items: ["model-with-reasoning", "model-with-reasoning"] }, { quotaProviders: [null] }, { wrapMode: "invalid" }, { codexCommand: "" }]) {
     assert.throws(() => normalizeOptions(options), TypeError)
   }
 })

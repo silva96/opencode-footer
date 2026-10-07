@@ -1,6 +1,6 @@
 {
   "name": "opencode-footer",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "A wrapping OpenCode V2 footer with model, session, and optional Codex quota information",
   "type": "module",
   "license": "MIT",
@@ -23,6 +23,7 @@
     "src/settings.mjs",
     "src/statusline-config.mjs",
     "src/status-parts.mjs",
+    "src/model-switch.mjs",
     "src/codex-quota.mjs",
     "README.md",
     "docs",

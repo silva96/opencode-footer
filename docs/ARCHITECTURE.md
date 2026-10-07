@@ -58,8 +58,10 @@ Initial plugin options seed the store once; thereafter, saved UI preferences tak
 precedence. UI edits are validated inside the storage mutation and immediately
 update the footer and poller. The plugin does not modify `cli.json`.
 
-The item picker keeps an isolated draft: Esc discards it, Enter commits it. Opening
-advanced settings discards the unsaved picker draft; advanced edits save individually.
+The item picker applies and persists each toggle or reorder immediately; Esc only
+closes it. Opening advanced settings keeps the applied item changes; advanced edits
+also save individually. Theme colors are toggled in Settings, not the item picker;
+item saves only write the item list so they don't overwrite appearance changes.
 
 ## Provider and quota lifecycle
 
@@ -71,6 +73,7 @@ GPT is not enough to infer which account supplies its quota.
 A reactive effect starts the poller on an eligible provider and stops it when the
 provider becomes ineligible. Stopping also cancels pending RPCs and ignores late
 results. Re-enabling starts fresh rather than showing another provider's cache.
+If no quota windows exist, quota entries are hidden until data is available.
 
 Keep account limits separate from context usage, session token totals, and model
 service-tier hints. Future quota sources should implement similarly scoped

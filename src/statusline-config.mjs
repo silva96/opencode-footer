@@ -7,7 +7,6 @@ export const STATUS_ITEMS = [
   { id: "five-hour-limit", description: "Remaining 5-hour Codex quota (omitted when unavailable)" },
   { id: "weekly-limit", description: "Remaining weekly Codex quota (omitted when unavailable)" },
   { id: "other-limits", description: "Other server-reported Codex quota windows" },
-  { id: "quota-status", description: "Codex quota loading or unavailable message" },
   { id: "total-input-tokens", description: "Total input tokens used in the session" },
   { id: "total-output-tokens", description: "Total output tokens used in the session" },
   { id: "fast-mode", description: "Fast mode inferred from the model name" },
@@ -25,7 +24,33 @@ export const STATUS_ITEMS = [
   { id: "opencode-version", description: "OpenCode application version" },
 ]
 
-export const QUOTA_ITEMS = ["five-hour-limit", "weekly-limit", "other-limits", "quota-status"]
+export const QUOTA_ITEMS = ["five-hour-limit", "weekly-limit", "other-limits"]
+
+export function fastModelCounterpart(current, models) {
+  const fast = (model) => /\bfast\b/i.test(`${model.name ?? ""} ${model.id ?? ""} ${model.modelID ?? ""}`)
+  const normalize = (value) => (value ?? "").toLowerCase()
+    .replace(/\bfast\b/g, "").replace(/[^a-z0-9]/g, "")
+  const sameBase = (model) => {
+    const currentName = normalize(current.name)
+    const modelName = normalize(model.name)
+    if (currentName && modelName) return currentName === modelName
+    const currentID = normalize(current.modelID ?? current.id)
+    return currentID !== "" && currentID === normalize(model.modelID ?? model.id)
+  }
+  return models.find((model) => model.enabled !== false && model.providerID === current.providerID &&
+    fast(model) !== fast(current) && sameBase(model))
+}
+
+export function fastModelSwitchTarget(current, models, variant) {
+  const target = fastModelCounterpart(current, models)
+  if (!target) return undefined
+  return {
+    id: target.id,
+    providerID: target.providerID,
+    ...(variant ? { variant } : {}),
+  }
+}
+
 export function footerCommandAction(input = "") {
   const action = input.trim()
   if (!action) return "menu"
@@ -34,23 +59,21 @@ export function footerCommandAction(input = "") {
 
 const ids = new Set(STATUS_ITEMS.map((item) => item.id))
 export function validateItems(items) {
-  if (!Array.isArray(items) || items.some((id) => !ids.has(id)) || new Set(items).size !== items.length) {
-    throw new TypeError("items must contain unique, supported status line item IDs")
-  }
-  return [...items]
+  if (!Array.isArray(items)) throw new TypeError("items must be an array")
+  const supported = items.filter((id) => ids.has(id))
+  if (new Set(supported).size !== supported.length) throw new TypeError("items must contain unique status line item IDs")
+  return supported
 }
 
 export function createDraft(preferences) {
   const selected = validateItems(preferences.items)
   return {
-    useThemeColors: preferences.useThemeColors,
     rows: [...selected, ...STATUS_ITEMS.map((item) => item.id).filter((id) => !selected.includes(id))]
       .map((id) => ({ id, enabled: selected.includes(id) })),
   }
 }
 
 export function toggleDraft(draft, id) {
-  if (id === "use-theme-colors") return { ...draft, useThemeColors: !draft.useThemeColors }
   return { ...draft, rows: draft.rows.map((row) => row.id === id ? { ...row, enabled: !row.enabled } : row) }
 }
 
@@ -67,18 +90,14 @@ export function moveDraft(draft, id, direction) {
 
 export const draftPreferences = (draft) => ({
   items: draft.rows.filter((row) => row.enabled).map((row) => row.id),
-  useThemeColors: draft.useThemeColors,
 })
 
 export function draftOptions(draft) {
   const definitions = new Map(STATUS_ITEMS.map((item) => [item.id, item]))
-  return [
-    { value: "use-theme-colors", title: `[${draft.useThemeColors ? "x" : " "}] Use theme colors`, description: "Apply colors from the active theme", category: "Appearance" },
-    ...draft.rows.map((row) => ({
-      value: row.id, title: `[${row.enabled ? "x" : " "}] ${row.id}`,
-      description: definitions.get(row.id).description, category: "Items",
-    })),
-  ].map((option) => ({ ...option, footer: "enter save · esc cancel" }))
+  return draft.rows.map((row) => ({
+    value: row.id, title: `[${row.enabled ? "x" : " "}] ${row.id}`,
+    description: definitions.get(row.id).description, category: "Items",
+  })).map((option) => ({ ...option, footer: "enter/space toggle · esc close" }))
 }
 
 export function searchDraftOptions(query, options) {
