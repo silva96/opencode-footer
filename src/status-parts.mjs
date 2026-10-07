@@ -34,7 +34,7 @@ export function buildStatusParts(data, items, quota, quotaEnabled, now = Date.no
   put("git-branch", data.branch, "branch")
   put("project-name", data.project, "path")
   put("hostname", data.hostname, "path")
-  put("run-state", data.runState, "agent")
+  put("run-state", data.runState, data.runState === "Working" ? "branch" : "context")
   put("session-id", data.sessionID, "path")
   put("session-title", data.title, "agent")
   put("opencode-version", data.version, "model")

@@ -62,7 +62,8 @@ Run **`/footer items`** to choose what appears in the footer:
 Available items include agent, model/reasoning, separate quota windows, directory,
 Git branch, token totals, context, hostname, session title/ID/cost, and run state.
 Unavailable information is omitted. Fast mode is inferred from the model name.
-The Working run state includes an animated spinner while the session is running.
+The Working run state includes an animated spinner and uses the Git branch color.
+Ready uses the context-remaining color. Both follow your theme.
 Quotas appear only once data is available; loading and unavailable messages are hidden.
 
 Run **`/footer settings`** (or **Ctrl+S** in the picker) for advanced settings:

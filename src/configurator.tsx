@@ -1,6 +1,5 @@
 /** @jsxImportSource @opentui/solid */
-import { createEffect, createMemo, createSignal, For, onMount, untrack } from "solid-js"
-import { useTerminalDimensions } from "@opentui/solid"
+import { createEffect, createMemo, createSignal, For, onCleanup, onMount, untrack } from "solid-js"
 import {
   createDraft, draftOptions, draftPreferences, moveDraft, searchDraftOptions, toggleDraft,
 } from "./statusline-config.mjs"
@@ -8,6 +7,7 @@ import type { Context } from "@opencode/plugin/tui/context"
 import type { InputRenderable, ScrollBoxRenderable } from "@opentui/core"
 import { ADVANCED_SETTINGS, parseSetting } from "./settings.mjs"
 import { quotaDetails } from "./codex-quota.mjs"
+import { observeRendererSize } from "./renderer-size.mjs"
 
 type Preferences = { items: string[] }
 
@@ -64,7 +64,9 @@ export async function configureStatusLine(
       const [query, setQuery] = createSignal("")
       const [selected, setSelected] = createSignal(preferences.items[0] ?? "agent")
       const [saving, setSaving] = createSignal(false)
-      const dimensions = useTerminalDimensions()
+      // Installed OpenTUI peers can have a different RendererContext from the host.
+      const [dimensions, setDimensions] = createSignal({ width: context.renderer.width, height: context.renderer.height })
+      onCleanup(observeRendererSize(context.renderer, setDimensions))
       const options = createMemo(() => searchDraftOptions(query(), draftOptions(draft())))
       const index = createMemo(() => Math.max(0, options().findIndex((option) => option.value === selected())))
       const current = () => options()[index()]?.value

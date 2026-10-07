@@ -1,6 +1,6 @@
 {
   "name": "opencode-footer",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A wrapping OpenCode V2 footer with model, session, and optional Codex quota information",
   "type": "module",
   "license": "MIT",
@@ -13,24 +13,23 @@
     "registry": "https://registry.npmjs.org"
   },
   "exports": {
-    "./tui": "./src/tui.tsx"
+    "./tui": "./dist/tui.js"
   },
   "files": [
-    "tui.ts",
-    "src/tui.tsx",
-    "src/configurator.tsx",
-    "src/options.mjs",
-    "src/settings.mjs",
-    "src/statusline-config.mjs",
-    "src/status-parts.mjs",
-    "src/model-switch.mjs",
-    "src/codex-quota.mjs",
+    "dist",
     "README.md",
     "docs",
     "LICENSE"
   ],
   "scripts": {
+    "build": "node scripts/build.mjs",
+    "prepack": "npm run build",
     "test": "node --test src/*.test.mjs"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.28.0",
+    "@babel/preset-typescript": "^7.27.1",
+    "babel-preset-solid": "^1.9.12"
   },
   "dependencies": {
     "@opencode/plugin": "latest"

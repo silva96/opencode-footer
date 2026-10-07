@@ -9,6 +9,7 @@
 | `src/options.mjs` | Portable defaults, option validation, provider eligibility. |
 | `src/settings.mjs` | Profile-scoped storage keys and validated advanced settings. |
 | `src/configurator.tsx` | `/footer items` picker and `/footer settings` dialogs. |
+| `src/renderer-size.mjs` | Host-renderer dimensions and disposable resize subscriptions. |
 | `src/statusline-config.mjs` | Item catalog, immutable picker drafts and search. |
 | `src/status-parts.mjs` | Ordered footer items built from available session, machine, and quota data. |
 | `src/codex-quota.mjs` | Read-only JSON-RPC connection, polling, normalization, cache, and safe display text. |
@@ -16,6 +17,14 @@
 
 Keep the package CLI-only (`./tui` export). It needs no server-side tools, shared
 account configuration, model-provider hooks, or changes to OpenCode's core code.
+
+Local discovery uses `tui.ts` and the TSX sources. `npm pack` compiles the published
+`dist/tui.js` entrypoint through `scripts/build.mjs`. The build uses OpenCode's
+shared `opentui:runtime-module:*` imports for Solid and OpenTUI render helpers,
+without bundling their runtimes. OpenCode 2.0.22 skips its JSX transform inside
+`node_modules`; shipping raw TSX there creates separate runtime contexts and
+breaks reactive updates. Test the packed entrypoint **inside node_modules**, not
+just an extracted directory or the local discovery entrypoint.
 
 ## Rendering contract
 
@@ -28,6 +37,10 @@ The plugin appends to `prompt.footer`. It does **not** replace the host's footer
 or render above the input. The text uses word wrapping, `flexShrink={1}`, and
 `minWidth={0}` so it shares the native row's available width. Do not give it a
 full-parent width or absolute position: those can cover processing/cancel controls.
+
+Read terminal dimensions from `context.renderer` and dispose resize listeners when
+the dialog closes. Avoid OpenTUI renderer-context hooks: an npm-installed peer can
+have a separate context from the host, causing a `No renderer found` crash.
 
 ## Add an information section
 
