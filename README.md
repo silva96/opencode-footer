@@ -10,7 +10,7 @@ wraps to fit the terminal.
 
 ## Preview
 
-![OpenCode session with opencode-footer showing model, Codex quotas, project, Git branch, token usage, and remaining context](https://raw.githubusercontent.com/silva96/opencode-footer/main/docs/images/footer-demo.png)
+https://github.com/user-attachments/assets/d9424564-42c4-44a6-9703-8d81c390baa8
 
 ## Requirements
 
