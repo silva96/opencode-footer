@@ -91,11 +91,11 @@ test("additional session and machine items render from OpenCode data", () => {
   assert.deepEqual(parts.map((part) => part.text), ["1.0k in", "500 out", "1.5k tokens", "Fast off", "machine", "project", "session", "title", "$1.25", "2.0", "Working"])
 })
 
-test("Ready uses the context-remaining tone and Working uses the branch tone", () => {
-  for (const [runState, tone] of [["Ready", "context"], ["Working", "branch"]]) {
-    const parts = buildStatusParts({ runState, branch: "main", contextLimit: 100, latestTokens: { input: 41 } },
-      ["run-state", "git-branch", "context-remaining"], {}, false)
+test("Ready uses the current-directory tone and Working uses the context-remaining tone", () => {
+  for (const [runState, tone] of [["Ready", "path"], ["Working", "context"]]) {
+    const parts = buildStatusParts({ runState, directory: "/project", contextLimit: 100, latestTokens: { input: 41 } },
+      ["run-state", "current-dir", "context-remaining"], {}, false)
     assert.equal(parts[0].tone, tone)
-    assert.equal(parts[0].tone, parts[runState === "Working" ? 1 : 2].tone)
+    assert.equal(parts[0].tone, parts[runState === "Working" ? 2 : 1].tone)
   }
 })
