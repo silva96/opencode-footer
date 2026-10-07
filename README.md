@@ -89,6 +89,7 @@ Quotas come from the selected Codex home and are only polled for eligible provid
 
 | Item | Click action |
 |---|---|
+| Agent (`agent`) | Opens OpenCode's agent picker. |
 | Model name (`model` or the name in `model-with-reasoning`) | Opens OpenCode's model picker. |
 | Reasoning effort (`reasoning` or the effort in `model-with-reasoning`) | Opens OpenCode's variant picker. |
 | Fast on/off (`fast-mode`) | Switches to the same-name fast/non-fast model in the same provider, preserving the current effort. If no counterpart exists, the model stays unchanged. |

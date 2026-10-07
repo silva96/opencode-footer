@@ -309,6 +309,7 @@ const FooterRuntime = {
                           fg={toneColor(part.tone)}
                           onMouseUp={isQuota ? () => showQuotaUsage(context, quota)
                             : part.item === "fast-mode" ? () => void toggleFast()
+                            : part.item === "agent" ? () => context.keymap.dispatch("agent.list")
                             : isEffort ? () => context.keymap.dispatch("variant.list")
                               : ["model", "model-with-reasoning"].includes(part.item)
                               ? () => context.keymap.dispatch("model.list") : undefined}
