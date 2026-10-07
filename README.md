@@ -10,7 +10,7 @@ wraps to fit the terminal.
 
 ## Preview
 
-https://github.com/user-attachments/assets/d9424564-42c4-44a6-9703-8d81c390baa8
+https://github.com/user-attachments/assets/d0bafc04-0ae7-4e18-9a28-7534150993e1
 
 ## Requirements
 
