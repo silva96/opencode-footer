@@ -11,6 +11,7 @@ import { fastModelSwitchTarget, footerCommandAction, QUOTA_ITEMS } from "./statu
 import { configureSettings, configureStatusLine, showQuotaUsage } from "./configurator"
 import { configFile, settingsFromOptions, settingsKey } from "./settings.mjs"
 import { switchPromptModel } from "./model-switch.mjs"
+import { agentDisplay } from "./agent-display.mjs"
 
 type QuotaState = {
   status: "loading" | "ready" | "stale" | "unavailable"
@@ -63,7 +64,7 @@ type StatusTone =
   | "effortHigh"
   | "effortXhigh"
   | "effortMax"
-type StatusPart = { text: string; tone: StatusTone; item: string; separator?: string }
+type StatusPart = { text: string; tone: StatusTone; item: string; separator?: string; color?: string | Context["theme"]["text"]["base"] }
 
 const WorkingIndicator = () => {
   const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
@@ -222,10 +223,8 @@ const FooterRuntime = {
         .replace(/\s+/g, " ")
         .trim()
 
-      const agentName = session?.agent
-        ? context.data.location.agent.list(location)?.find((agent) => agent.id === session.agent)?.name ?? session.agent
-        : undefined
-      const titleizedAgent = agentName?.replace(/(^|[-_\s])([a-z])/g, (_, separator, letter) => `${separator}${letter.toUpperCase()}`)
+      const agentLocation = session?.location?.directory ? session.location : location
+      const agent = agentDisplay(session?.agent, context.data.location.agent.list(agentLocation) ?? [], context.theme)
 
       let latestTokens: TokenUsage | undefined
       for (const message of (context.data.session.message.list(sessionID) ?? []) as AssistantMessage[]) {
@@ -239,7 +238,7 @@ const FooterRuntime = {
         : location
       const branch = vcsLocation ? context.data.location.vcs.info(vcsLocation)?.branch.current : undefined
       return buildStatusParts({
-        agent: titleizedAgent, model: displayModelName, reasoning: variant, fast: fastMode,
+        agent: agent.name, agentColor: agent.color, model: displayModelName, reasoning: variant, fast: fastMode,
         directory: directory ? context.ui.format.path(directory) : undefined,
         project: directory ? basename(directory) : undefined, branch, hostname: hostname(),
         runState: context.data.session.status(sessionID) === "running" ? "Working" : "Ready",
@@ -306,7 +305,7 @@ const FooterRuntime = {
                         </Show>
                         <text
                           wrapMode={options().wrapMode}
-                          fg={toneColor(part.tone)}
+                          fg={options().useThemeColors ? part.color ?? toneColor(part.tone) : context.theme.text.base}
                           onMouseUp={isQuota ? () => showQuotaUsage(context, quota)
                             : part.item === "fast-mode" ? () => void toggleFast()
                             : part.item === "agent" ? () => context.keymap.dispatch("agent.list")

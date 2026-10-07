@@ -18,13 +18,13 @@ export const effortTone = (effort) => ({
 /** Render available data in item order; missing values never produce separators. */
 export function buildStatusParts(data, items, quota, quotaEnabled, now = Date.now()) {
   const values = new Map()
-  const put = (id, text, tone = "model", separator) => {
+  const put = (id, text, tone = "model", separator, color) => {
     if (text === undefined || text === null || text === "") return
     const parts = values.get(id) ?? []
-    parts.push({ item: id, text, tone, ...(separator ? { separator } : {}) })
+    parts.push({ item: id, text, tone, ...(separator ? { separator } : {}), ...(color !== undefined ? { color } : {}) })
     values.set(id, parts)
   }
-  put("agent", data.agent, "agent")
+  put("agent", data.agent, "agent", undefined, data.agentColor)
   put("model", data.model, "model")
   put("reasoning", data.reasoning, effortTone(data.reasoning))
   put("model-with-reasoning", data.model, "model")

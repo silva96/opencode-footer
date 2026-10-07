@@ -62,6 +62,9 @@ Run **`/footer items`** to choose what appears in the footer:
 Available items include agent, model/reasoning, separate quota windows, directory,
 Git branch, token totals, context, hostname, session title/ID/cost, and run state.
 Unavailable information is omitted. Fast mode is inferred from the model name.
+The agent item shows the session's committed agent; after selecting another agent,
+the label updates when you send a prompt. OpenCode 2.0.22 does not expose the
+pending agent selection to plugins.
 The Working run state includes an animated spinner and uses the quota/Fast on/context-remaining color.
 Ready uses the current-directory color. Both follow your theme.
 Quotas appear only once data is available; loading and unavailable messages are hidden.

@@ -10,6 +10,7 @@
 | `src/settings.mjs` | Profile-scoped storage keys and validated advanced settings. |
 | `src/configurator.tsx` | `/footer items` picker and `/footer settings` dialogs. |
 | `src/renderer-size.mjs` | Host-renderer dimensions and disposable resize subscriptions. |
+| `src/agent-display.mjs` | Agent labels and native categorical/configured agent colors. |
 | `src/statusline-config.mjs` | Item catalog, immutable picker drafts and search. |
 | `src/status-parts.mjs` | Ordered footer items built from available session, machine, and quota data. |
 | `src/codex-quota.mjs` | Read-only JSON-RPC connection, polling, normalization, cache, and safe display text. |
@@ -28,10 +29,18 @@ just an extracted directory or the local discovery entrypoint.
 
 ## Rendering contract
 
-Each part has `text`, `tone`, and `item`, plus an optional `separator`.
+Each part has `text`, `tone`, and `item`, plus optional `separator` and `color`.
 `buildStatusParts` filters unavailable data and applies the saved item order,
 preserving part order within an item. Semantic theme colors are applied by the
 renderer; data sources should not embed ANSI sequences.
+
+The agent item uses its configured hex color or OpenCode's deduplicated
+`theme.categorical[*][200]` palette, indexed by visible agents (including visible
+subagents). Disabling theme colors still uses the base text color for every item.
+The label reads the session's committed agent. OpenCode 2.0.22's public plugin API
+does not expose the client-local draft agent, so a native agent selection is not
+reflected until it is committed when a prompt is sent. Do not guess the selection
+from a model or intercept the host's agent commands to hide this API limitation.
 
 The plugin appends to `prompt.footer`. It does **not** replace the host's footer
 or render above the input. The text uses word wrapping, `flexShrink={1}`, and
