@@ -10,6 +10,17 @@ export const tokenTotal = (tokens) =>
   (tokens?.input ?? 0) + (tokens?.output ?? 0) + (tokens?.reasoning ?? 0) +
   (tokens?.cache?.read ?? 0) + (tokens?.cache?.write ?? 0)
 
+export function latestAssistantTokens(messages) {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index]
+    if (message.type === "assistant" && message.tokens) return message.tokens
+  }
+}
+
+export const needsLatestAssistantTokens = (items, contextLimit) =>
+  Number.isFinite(contextLimit) && contextLimit > 0 &&
+  items.some((item) => item === "context-used" || item === "context-remaining")
+
 export const effortTone = (effort) => ({
   low: "effortLow", minimal: "effortLow", medium: "effortMedium", high: "effortHigh",
   xhigh: "effortXhigh", max: "effortMax",

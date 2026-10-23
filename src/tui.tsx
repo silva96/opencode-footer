@@ -6,7 +6,7 @@ import { basename } from "node:path"
 import { hostname } from "node:os"
 import { createCodexQuotaPoller } from "./codex-quota.mjs"
 import { shouldShowQuota } from "./options.mjs"
-import { buildStatusParts } from "./status-parts.mjs"
+import { buildStatusParts, latestAssistantTokens, needsLatestAssistantTokens } from "./status-parts.mjs"
 import { fastModelSwitchTarget, footerCommandAction, QUOTA_ITEMS } from "./statusline-config.mjs"
 import { configureSettings, configureStatusLine, showQuotaUsage } from "./configurator"
 import { configFile, settingsFromOptions, settingsKey } from "./settings.mjs"
@@ -284,10 +284,11 @@ const FooterRuntime = {
       const agentLocation = session?.location?.directory ? session.location : location
       const agent = agentDisplay(session?.agent, context.data.location.agent.list(agentLocation) ?? [], context.theme)
 
-      let latestTokens: TokenUsage | undefined
-      for (const message of (context.data.session.message.list(sessionID) ?? []) as AssistantMessage[]) {
-        if (message.type === "assistant" && message.tokens) latestTokens = message.tokens
-      }
+      const items = options().items
+      const contextLimit = modelInfo?.limit?.context
+      const latestTokens: TokenUsage | undefined = needsLatestAssistantTokens(items, contextLimit)
+        ? latestAssistantTokens((context.data.session.message.list(sessionID) ?? []) as AssistantMessage[])
+        : undefined
 
       const directory = session?.location?.directory ?? location?.directory
 
@@ -302,8 +303,8 @@ const FooterRuntime = {
         runState: context.data.session.status(sessionID) === "running" ? "Working" : "Ready",
         petState: petMood()?.sessionID === sessionID ? petMood()?.state : undefined,
         sessionID, title: session?.title, cost: context.data.session.cost(sessionID), version: context.app.version,
-        tokens: session?.tokens, latestTokens, contextLimit: modelInfo?.limit?.context,
-      }, options().items, quota(), shouldShowQuota(options(), selectedProvider())) as StatusPart[]
+        tokens: session?.tokens, latestTokens, contextLimit,
+      }, items, quota(), shouldShowQuota(options(), selectedProvider())) as StatusPart[]
     }
 
     const currentSession = () => {
