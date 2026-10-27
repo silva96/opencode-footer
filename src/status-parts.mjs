@@ -1,4 +1,5 @@
 import { quotaDisplayParts } from "./codex-quota.mjs"
+import { QUOTA_ITEMS } from "./statusline-config.mjs"
 
 export const compact = (value) => {
   if (value < 1_000) return String(Math.round(value))
@@ -44,6 +45,12 @@ export function buildStatusParts(data, items, quota, quotaEnabled, now = Date.no
   if (data.model) put("fast-mode", data.fast ? "Fast on" : "Fast off", data.fast ? "fastOn" : "fastOff")
   put("current-dir", data.directory, "path")
   put("git-branch", data.branch, "branch")
+  if (data.branch && data.pullRequest) {
+    values.get("git-branch").push({
+      item: "pull-request", text: `#${data.pullRequest.number}`, tone: "branch", url: data.pullRequest.url, separator: " ",
+    })
+  }
+  put("spacer", " ")
   put("project-name", data.project, "path")
   put("hostname", data.hostname, "path")
   put("run-state", data.runState, data.runState === "Working" ? "context" : "path")
@@ -71,12 +78,17 @@ export function buildStatusParts(data, items, quota, quotaEnabled, now = Date.no
   }
   if (quotaEnabled) {
     const displayed = quotaDisplayParts(quota, now, false)
-    quota.windows.forEach((window, index) => {
-      const id = window.label === "5h" ? "five-hour-limit" : window.label === "weekly" ? "weekly-limit" : "other-limits"
-      const part = displayed[index]
-      put(id, part.text, part.stale ? "fastOff" : part.remaining !== null && part.remaining <= 10 ? "effortXhigh" : "context")
-    })
+    if (!quota.windows.length) {
+      const id = items.find((item) => QUOTA_ITEMS.includes(item))
+      if (id) put(id, displayed[0].text, "fastOff")
+    } else {
+      quota.windows.forEach((window, index) => {
+        const id = window.label === "5h" ? "five-hour-limit" : window.label === "weekly" ? "weekly-limit" : "other-limits"
+        const part = displayed[index]
+        put(id, part.text, part.stale ? "fastOff" : part.remaining !== null && part.remaining <= 10 ? "effortXhigh" : "context")
+      })
+    }
   }
   const parts = items.flatMap((id) => values.get(id) ?? [])
-  return parts
+  return parts.filter((part, index) => part.item !== "spacer" || (index > 0 && index < parts.length - 1))
 }

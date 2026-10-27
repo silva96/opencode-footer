@@ -5,6 +5,7 @@ import { createEffect, createMemo, createRoot, createSignal, For, onCleanup, onM
 import { basename } from "node:path"
 import { hostname } from "node:os"
 import { createCodexQuotaPoller } from "./codex-quota.mjs"
+import { FooterQuota } from "./quota-rpc.mjs"
 import { shouldShowQuota } from "./options.mjs"
 import { buildStatusParts, latestAssistantTokens, needsLatestAssistantTokens } from "./status-parts.mjs"
 import { fastModelSwitchTarget, footerCommandAction, QUOTA_ITEMS } from "./statusline-config.mjs"
@@ -12,6 +13,7 @@ import { configureSettings, configureStatusLine, showQuotaUsage } from "./config
 import { configFile, settingsFromOptions, settingsKey } from "./settings.mjs"
 import { switchPromptModel } from "./model-switch.mjs"
 import { agentDisplay } from "./agent-display.mjs"
+import { readPullRequest } from "./pull-request.mjs"
 
 type QuotaState = {
   status: "loading" | "ready" | "stale" | "unavailable"
@@ -65,7 +67,7 @@ type StatusTone =
   | "effortXhigh"
   | "effortMax"
 type PetState = "idle" | "working" | "thinking" | "sleeping" | "error" | "happy"
-type StatusPart = { text: string; tone: StatusTone; item: string; separator?: string; color?: string | Context["theme"]["text"]["base"]; petState?: PetState }
+type StatusPart = { text: string; tone: StatusTone; item: string; separator?: string; color?: string | Context["theme"]["text"]["base"]; petState?: PetState; url?: string }
 
 const WorkingIndicator = () => {
   const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
@@ -140,7 +142,7 @@ const FooterRuntime = {
                     title: "Configure Footer",
                     options: [
                       { value: "items", title: "Items", description: "Choose and reorder footer items" },
-                      { value: "settings", title: "Settings", description: "Codex home, quotas, wrapping, and separator" },
+                      { value: "settings", title: "Settings", description: "Quotas, wrapping, and separator" },
                     ],
                   })
                 }
@@ -162,9 +164,11 @@ const FooterRuntime = {
     const [revision, setRevision] = createSignal(0)
     const [quota, setQuota] = createSignal<QuotaState>({ status: "loading", windows: [], updatedAt: null })
     const [petMood, setPetMood] = createSignal<{ sessionID: string; state: "thinking" | "error" | "happy" }>()
+    const [pullRequest, setPullRequest] = createSignal<{ number: number; url: string }>()
     let petMoodTimer: ReturnType<typeof setTimeout> | undefined
     let quotaPoller: ReturnType<typeof createCodexQuotaPoller> | undefined
     let pollerKey: string | undefined
+    const quotaClient = context.client.rpc(FooterQuota)
     const selectedProvider = () => {
       revision()
       const selected = context.ui.model.current() as ModelRef | undefined
@@ -173,7 +177,7 @@ const FooterRuntime = {
     createEffect(() => {
       const settings = options()
       const enabled = shouldShowQuota(settings, selectedProvider())
-      const nextKey = enabled ? JSON.stringify([settings.codexHome, settings.codexCommand, settings.refreshIntervalMs, settings.requestTimeoutMs]) : undefined
+      const nextKey = enabled ? JSON.stringify([settings.refreshIntervalMs, settings.requestTimeoutMs]) : undefined
       if (nextKey !== pollerKey) {
         quotaPoller?.stop()
         quotaPoller = undefined
@@ -183,15 +187,18 @@ const FooterRuntime = {
       if (enabled && !quotaPoller) {
         setQuota({ status: "loading", windows: [], updatedAt: null })
         quotaPoller = createCodexQuotaPoller({
-          codexHome: settings.codexHome,
+          readQuota: (signal) => quotaClient.read({}, { location: context.location ?? context.data.location.default(), signal }) as Promise<{
+            account: string | null
+            windows: QuotaState["windows"] | null
+          }>,
           intervalMs: settings.refreshIntervalMs,
           requestTimeoutMs: settings.requestTimeoutMs,
-          codexCommand: settings.codexCommand,
           onUpdate: setQuota,
         })
       }
     })
-    const location = context.location ?? context.data.location.default()
+    const defaultLocation = context.location ?? context.data.location.default()
+    let syncedModelLocation: { directory: string; workspaceID?: string } | undefined
     const refresh = () => setRevision((value) => value + 1)
     const clearPetMood = (sessionID: string) => {
       if (petMood()?.sessionID !== sessionID) return
@@ -233,10 +240,10 @@ const FooterRuntime = {
           return "#d81558"
       }
     }
-    if (location) {
-      void context.data.location.model.sync(location).catch(() => {})
-      void context.data.location.vcs.sync(location).catch(() => {})
-      void context.data.location.agent.sync(location).then(refresh).catch(() => {})
+    if (defaultLocation) {
+      void context.data.location.model.sync(defaultLocation).catch(() => {})
+      void context.data.location.vcs.sync(defaultLocation).catch(() => {})
+      void context.data.location.agent.sync(defaultLocation).then(refresh).catch(() => {})
     }
 
     const stops = [
@@ -258,19 +265,26 @@ const FooterRuntime = {
     ]
     const timer = setInterval(() => {
       refresh()
-      if (location) void context.data.location.vcs.sync(location).catch(() => {})
+      if (defaultLocation) void context.data.location.vcs.sync(defaultLocation).catch(() => {})
     }, 5_000)
 
     const buildLine = (sessionID: string) => {
       revision()
       const session = context.data.session.get(sessionID) as SessionRecord | undefined
+      const modelLocation = session?.location?.directory
+        ? { directory: session.location.directory, workspaceID: session.location.workspaceID }
+        : defaultLocation
+      if (modelLocation && (modelLocation.directory !== syncedModelLocation?.directory || modelLocation.workspaceID !== syncedModelLocation?.workspaceID)) {
+        syncedModelLocation = modelLocation
+        void context.data.location.model.sync(modelLocation).then(refresh).catch(() => {})
+      }
       const selected = context.ui.model.current() as ModelRef | undefined
       const sessionModel = session?.model
       const modelID = selected?.model?.id ?? selected?.modelID ?? selected?.id ?? sessionModel?.id
       const providerID =
         selected?.model?.providerID ?? selected?.providerID ?? sessionModel?.providerID
       const variant = selected?.variant ?? sessionModel?.variant
-      const models = location ? context.data.location.model.list(location) ?? [] : []
+      const models = modelLocation ? context.data.location.model.list(modelLocation) ?? [] : []
       const modelInfo = models.find(
         (model) => (model.id === modelID || model.modelID === modelID) && model.providerID === providerID,
       ) as (ModelRef & { limit?: { context?: number } }) | undefined
@@ -281,7 +295,7 @@ const FooterRuntime = {
         .replace(/\s+/g, " ")
         .trim()
 
-      const agentLocation = session?.location?.directory ? session.location : location
+      const agentLocation = modelLocation
       const agent = agentDisplay(session?.agent, context.data.location.agent.list(agentLocation) ?? [], context.theme)
 
       const items = options().items
@@ -290,16 +304,16 @@ const FooterRuntime = {
         ? latestAssistantTokens((context.data.session.message.list(sessionID) ?? []) as AssistantMessage[])
         : undefined
 
-      const directory = session?.location?.directory ?? location?.directory
+      const directory = session?.location?.directory ?? defaultLocation?.directory
 
       const vcsLocation = session?.location?.directory
         ? { directory: session.location.directory, workspaceID: session.location.workspaceID }
-        : location
+        : defaultLocation
       const branch = vcsLocation ? context.data.location.vcs.info(vcsLocation)?.branch.current : undefined
       return buildStatusParts({
         agent: agent.name, agentColor: agent.color, model: displayModelName, reasoning: variant, fast: fastMode,
         directory: directory ? context.ui.format.path(directory) : undefined,
-        project: directory ? basename(directory) : undefined, branch, hostname: hostname(),
+        project: directory ? basename(directory) : undefined, branch, pullRequest: pullRequest(), hostname: hostname(),
         runState: context.data.session.status(sessionID) === "running" ? "Working" : "Ready",
         petState: petMood()?.sessionID === sessionID ? petMood()?.state : undefined,
         sessionID, title: session?.title, cost: context.data.session.cost(sessionID), version: context.app.version,
@@ -312,20 +326,49 @@ const FooterRuntime = {
       return route.type === "session" ? route.sessionID : undefined
     }
 
+    const pullRequestTarget = createMemo(() => {
+      revision()
+      const sessionID = currentSession()
+      if (!sessionID || !options().items.includes("git-branch")) return
+      const location = context.data.session.get(sessionID)?.location ?? defaultLocation
+      const branch = location ? context.data.location.vcs.info(location)?.branch.current : undefined
+      if (location?.directory && branch) return JSON.stringify([location.directory, branch])
+    })
+    createEffect(() => {
+      const target = pullRequestTarget()
+      setPullRequest(undefined)
+      if (!target) return
+      const [directory, branch] = JSON.parse(target)
+      const controller = new AbortController()
+      const refreshPullRequest = async () => {
+        const pr = await readPullRequest(directory, branch, controller.signal)
+        if (!controller.signal.aborted) setPullRequest(pr)
+      }
+      void refreshPullRequest()
+      const interval = setInterval(refreshPullRequest, 60_000)
+      onCleanup(() => {
+        controller.abort()
+        clearInterval(interval)
+      })
+    })
+
     const StatusLine = () => {
       let switchingModel = false
       const toggleFast = async () => {
         const sessionID = currentSession()
-        if (!sessionID || !location || switchingModel) return
+        if (!sessionID || !defaultLocation || switchingModel) return
         switchingModel = true
         try {
-          await context.data.location.model.sync(location)
-          const selected = context.ui.model.current()
           const session = context.data.session.get(sessionID) as SessionRecord | undefined
+          const modelLocation = session?.location?.directory
+            ? { directory: session.location.directory, workspaceID: session.location.workspaceID }
+            : defaultLocation
+          await context.data.location.model.sync(modelLocation)
+          const selected = context.ui.model.current()
           const modelID = selected?.modelID ?? session?.model?.id
           const providerID = selected?.providerID ?? session?.model?.providerID
           const variant = selected ? selected.variant : session?.model?.variant
-          const models = context.data.location.model.list(location) ?? []
+          const models = context.data.location.model.list(modelLocation) ?? []
           const current = models.find((model) => model.providerID === providerID &&
             (model.id === modelID || model.modelID === modelID))
           const target = current && fastModelSwitchTarget(current, models, variant)
@@ -352,15 +395,16 @@ const FooterRuntime = {
       return (
         <Show when={line().length ? line() : undefined}>
           {(parts) => (
-            <box flexDirection="column" flexShrink={1} minWidth={0}>
-              <box flexDirection="row" flexWrap="wrap" flexShrink={1} minWidth={0}>
+            <box flexDirection="column" width="100%" flexShrink={1} minWidth={0}>
+              <box flexDirection="row" width="100%" flexWrap="wrap" flexShrink={1} minWidth={0}>
                 <For each={parts()}>
                   {(part, index) => {
+                    if (part.item === "spacer") return <box flexGrow={1} minWidth={1} height={1} />
                     const isQuota = QUOTA_ITEMS.includes(part.item)
                     const isEffort = ["effortLow", "effortMedium", "effortHigh", "effortXhigh", "effortMax"].includes(part.tone)
                     return (
                       <>
-                        <Show when={index() > 0}>
+                        <Show when={index() > 0 && parts()[index() - 1]?.item !== "spacer"}>
                           <text fg={options().useThemeColors ? context.theme.text.muted : context.theme.text.base}>{part.separator ?? options().separator}</text>
                         </Show>
                         <text
@@ -374,7 +418,7 @@ const FooterRuntime = {
                               ? () => context.keymap.dispatch("model.list") : undefined}
                         >
                           <Show when={part.item === "pet"} fallback={
-                            <Show when={part.item === "run-state" && part.text === "Working"} fallback={part.text}>
+                            <Show when={part.item === "run-state" && part.text === "Working"} fallback={part.url ? <a href={part.url}>{part.text}</a> : part.text}>
                               <WorkingIndicator />
                             </Show>
                           }>
@@ -393,7 +437,7 @@ const FooterRuntime = {
     }
 
     context.ui.slot({
-      append: "prompt.footer",
+      replace: "prompt.footer",
       render: () => <StatusLine />,
     })
 

@@ -7,6 +7,7 @@ export const STATUS_ITEMS = [
   { id: "five-hour-limit", description: "Remaining 5-hour Codex quota (omitted when unavailable)" },
   { id: "weekly-limit", description: "Remaining weekly Codex quota (omitted when unavailable)" },
   { id: "other-limits", description: "Other server-reported Codex quota windows" },
+  { id: "spacer", description: "Flexible space between footer items" },
   { id: "total-input-tokens", description: "Total input tokens used in the session" },
   { id: "total-output-tokens", description: "Total output tokens used in the session" },
   { id: "fast-mode", description: "Fast mode inferred from the model name" },

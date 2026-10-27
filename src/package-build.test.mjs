@@ -6,6 +6,7 @@ import test from "node:test"
 test("published JSX and imports use the host runtime instead of installed peers", async () => {
   execFileSync(process.execPath, ["scripts/build.mjs"], { cwd: new URL("../", import.meta.url) })
   const packageJSON = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"))
+  assert.equal(packageJSON.exports["."], "./dist/index.mjs")
   assert.equal(packageJSON.exports["./tui"], "./dist/tui.js")
   assert.ok(packageJSON.files.includes("dist"))
   for (const file of ["tui.js", "configurator.js"]) {
@@ -17,8 +18,12 @@ test("published JSX and imports use the host runtime instead of installed peers"
     assert.doesNotMatch(code, /useTerminalDimensions/)
   }
   const entrypoint = await readFile(new URL("../dist/tui.js", import.meta.url), "utf8")
+  assert.match(entrypoint, /replace: "prompt\.footer"/)
+  assert.doesNotMatch(entrypoint, /append: "prompt\.footer"/)
   assert.match(entrypoint, /from "opentui:runtime-module:%40opencode%2Fplugin%2Ftui"/)
   assert.match(entrypoint, /from "\.\/configurator\.js"/)
+  const server = await import(new URL("../dist/index.mjs", import.meta.url))
+  assert.equal(server.default.id, "opencode-footer.server")
   for (const name of await readdir(new URL("./", import.meta.url))) {
     if (!name.endsWith(".mjs") || name.endsWith(".test.mjs")) continue
     const source = await readFile(new URL(name, import.meta.url), "utf8")

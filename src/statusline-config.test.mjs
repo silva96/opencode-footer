@@ -87,12 +87,12 @@ test("context unknown, quotas expired, and zero token totals are handled without
   assert.equal(buildStatusParts({ contextLimit: 100, latestTokens: { input: 200 } }, ["context-used"], quota, false)[0].text, "100% context used")
 })
 
-test("quotas without data are hidden and status is not a configurable item", () => {
+test("quotas without data show loading/unavailable and status is not a configurable item", () => {
   const options = draftOptions(createDraft({ items: ["weekly-limit"], useThemeColors: true }))
   assert.equal(options.some((option) => option.value === "quota-status"), false)
   assert.deepEqual(normalizeOptions({ items: ["removed-item", "quota-status", "weekly-limit"] }).items, ["weekly-limit"])
-  assert.deepEqual(buildStatusParts({}, ["weekly-limit"], { status: "loading", windows: [], updatedAt: null }, true), [])
-  assert.deepEqual(buildStatusParts({}, ["weekly-limit"], { status: "unavailable", windows: [], updatedAt: null }, true), [])
+  assert.equal(buildStatusParts({}, ["weekly-limit"], { status: "loading", windows: [], updatedAt: null }, true)[0].text, "Codex quota …")
+  assert.equal(buildStatusParts({}, ["weekly-limit"], { status: "unavailable", windows: [], updatedAt: null }, true)[0].text, "Codex quota unavailable")
   assert.deepEqual(buildStatusParts({}, ["weekly-limit"], { status: "loading", windows: [], updatedAt: null }, false), [])
 })
 

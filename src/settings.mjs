@@ -6,11 +6,9 @@ import { normalizeOptions } from "./options.mjs"
 
 export const ADVANCED_SETTINGS = [
   { id: "useThemeColors", title: "Use theme colors", description: "Toggle colors from the active theme" },
-  { id: "codexHome", title: "Codex home", description: "Codex login directory; absolute path or ~/" },
-  { id: "codexCommand", title: "Codex executable", description: "Executable name or path" },
   { id: "quotaProviders", title: "Quota providers", description: "Comma-separated provider IDs; empty disables quotas" },
   { id: "refreshIntervalMs", title: "Quota refresh interval", description: "Milliseconds, at least 1000" },
-  { id: "requestTimeoutMs", title: "Codex request timeout", description: "Milliseconds, at least 1000" },
+  { id: "requestTimeoutMs", title: "Quota request timeout", description: "Milliseconds, at least 1000" },
   { id: "wrapMode", title: "Wrapping", description: "word, char, or none" },
   { id: "separator", title: "Separator", description: "Text between footer items" },
 ]

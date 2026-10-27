@@ -4,12 +4,12 @@ import { ADVANCED_SETTINGS, configFile, parseSetting, settingsFromOptions, setti
 
 test("settings use portable defaults and normalize supplied plugin options", () => {
   const defaults = settingsFromOptions()
-  assert.equal(defaults.codexHome.endsWith("/.codex"), true)
+  assert.deepEqual(defaults.quotaProviders, ["openai"])
   assert.equal(defaults.wrapMode, "word")
   assert.ok(defaults.items.includes("model-with-reasoning"))
 
-  const configured = settingsFromOptions({ codexHome: "~/.codex-profe", items: ["agent"], useThemeColors: false })
-  assert.equal(configured.codexHome.endsWith("/.codex-profe"), true)
+  const configured = settingsFromOptions({ quotaProviders: [], items: ["agent"], useThemeColors: false })
+  assert.deepEqual(configured.quotaProviders, [])
   assert.deepEqual(configured.items, ["agent"])
   assert.equal(configured.useThemeColors, false)
 })
@@ -34,5 +34,5 @@ test("advanced edits validate values and preserve other saved settings", () => {
   assert.equal(parseSetting(settings, "useThemeColors", "true").useThemeColors, true)
   assert.deepEqual(parseSetting(settings, "useThemeColors", "false").items, settings.items)
   assert.throws(() => parseSetting(settings, "useThemeColors", "invalid"), TypeError)
-  for (const [id, value] of [["refreshIntervalMs", "999"], ["requestTimeoutMs", "bad"], ["wrapMode", "invalid"], ["codexHome", "relative"], ["codexCommand", ""], ["unknown", "x"]]) assert.throws(() => parseSetting(settings, id, value), TypeError)
+  for (const [id, value] of [["refreshIntervalMs", "999"], ["requestTimeoutMs", "bad"], ["wrapMode", "invalid"], ["codexHome", "~/.codex"], ["codexCommand", "codex"], ["unknown", "x"]]) assert.throws(() => parseSetting(settings, id, value), TypeError)
 })
