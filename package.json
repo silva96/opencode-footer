@@ -1,6 +1,6 @@
 {
   "name": "opencode-footer",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "A wrapping OpenCode V2 footer with model, session, and optional Codex quota information",
   "type": "module",
   "license": "MIT",
@@ -13,6 +13,7 @@
     "registry": "https://registry.npmjs.org"
   },
   "exports": {
+    ".": "./dist/index.mjs",
     "./tui": "./dist/tui.js"
   },
   "files": [

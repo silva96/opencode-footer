@@ -1,9 +1,7 @@
-import { homedir } from "node:os"
-import { isAbsolute, join, normalize } from "node:path"
 import { QUOTA_ITEMS, validateItems } from "./statusline-config.mjs"
 
-export const DEFAULT_ITEMS = ["agent", "model-with-reasoning", "fast-mode", ...QUOTA_ITEMS,
-  "current-dir", "git-branch", "total-input-tokens", "total-output-tokens", "context-remaining"]
+export const DEFAULT_ITEMS = ["agent", "model-with-reasoning", "fast-mode", "current-dir", "git-branch", ...QUOTA_ITEMS,
+  "spacer", "total-input-tokens", "total-output-tokens", "context-remaining"]
 
 const positiveInterval = (value, name, fallback) => {
   if (value === undefined) return fallback
@@ -19,22 +17,15 @@ export function normalizeOptions(options = {}) {
   if (!Array.isArray(quotaProviders) || quotaProviders.some((id) => typeof id !== "string" || !id.trim())) {
     throw new TypeError("quotaProviders must be an array of provider IDs")
   }
-  let codexHome = options.codexHome ?? join(homedir(), ".codex")
-  if (typeof codexHome !== "string") throw new TypeError("codexHome must be a path")
-  if (codexHome === "~") codexHome = homedir()
-  if (codexHome.startsWith("~/")) codexHome = join(homedir(), codexHome.slice(2))
-  if (!isAbsolute(codexHome)) throw new TypeError("codexHome must be absolute or start with ~/")
   const wrapMode = options.wrapMode ?? "word"
   if (!["word", "char", "none"].includes(wrapMode)) throw new TypeError("wrapMode must be word, char, or none")
-  const codexCommand = options.codexCommand ?? "codex"
-  if (typeof codexCommand !== "string" || !codexCommand.trim()) throw new TypeError("codexCommand must name an executable")
   const separator = options.separator ?? " · "
   if (typeof separator !== "string") throw new TypeError("separator must be text")
   return {
-    items, useThemeColors, quotaProviders: [...quotaProviders], codexHome: normalize(codexHome),
+    items, useThemeColors, quotaProviders: [...quotaProviders],
     refreshIntervalMs: positiveInterval(options.refreshIntervalMs, "refreshIntervalMs", 15_000),
     requestTimeoutMs: positiveInterval(options.requestTimeoutMs, "requestTimeoutMs", 12_000),
-    wrapMode, codexCommand, separator,
+    wrapMode, separator,
   }
 }
 

@@ -1,21 +1,14 @@
 import assert from "node:assert/strict"
-import { mkdtempSync, rmSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
-import { EventEmitter } from "node:events"
-import { PassThrough, Writable } from "node:stream"
 import { setTimeout as delay } from "node:timers/promises"
-import test, { after } from "node:test"
+import test from "node:test"
 import { createCodexQuotaPoller, parseQuotaWindows, quotaDetails, quotaDisplayParts, REFRESH_INTERVAL_MS } from "./codex-quota.mjs"
-
-const testHome = mkdtempSync(join(tmpdir(), "opencode-footer-test-"))
-after(() => rmSync(testHome, { recursive: true, force: true }))
+import serverPlugin from "./index.mjs"
+import { FooterQuota } from "./quota-rpc.mjs"
 
 const limits = (used = 9) => ({
-  rateLimits: {
-    limitId: "codex",
-    primary: { usedPercent: used, windowDurationMins: 300, resetsAt: 2_000_000_000 },
-    secondary: { usedPercent: 40, windowDurationMins: 10_080, resetsAt: 2_000_100_000 },
+  rate_limit: {
+    primary_window: { used_percent: used, limit_window_seconds: 18_000, reset_at: 2_000_000_000 },
+    secondary_window: { used_percent: 40, limit_window_seconds: 604_800, reset_at: 2_000_100_000 },
   },
 })
 
@@ -42,44 +35,18 @@ test("usage modal rows have separate labels, 20-cell remaining bars, and reset t
   assert.equal(expired.reset, "")
 })
 
-function fakeServer(handler = () => undefined) {
+function fakeServer(handler = () => ({ account: "account-1", windows: parseQuotaWindows(limits()) })) {
   const requests = []
-  const starts = []
-  const children = []
-  const spawnProcess = (command, args, options) => {
-    starts.push({ command, args, options })
-    const child = new EventEmitter()
-    children.push(child)
-    child.exitCode = null
-    child.stdout = new PassThrough()
-    const send = (message) => child.stdout.write(`${JSON.stringify(message)}\n`)
-    child.stdin = new Writable({
-      write(chunk, _encoding, done) {
-        const request = JSON.parse(chunk.toString())
-        requests.push(request)
-        queueMicrotask(() => {
-          const custom = handler(request, send)
-          if (custom === false || request.method === "initialized") return
-          const result = custom ?? (request.method === "account/read" ? { account: { type: "chatgpt" } } : request.method === "account/rateLimits/read" ? limits() : {})
-          send({ id: request.id, result })
-        })
-        done()
-      },
-    })
-    child.kill = () => {
-      child.exitCode = 0
-      queueMicrotask(() => child.emit("exit", 0))
-      return true
-    }
-    return child
+  const readQuota = async (signal) => {
+    requests.push(signal)
+    return handler(signal)
   }
-  return { requests, starts, children, spawnProcess }
+  return { requests, readQuota }
 }
 
 const poller = (server, overrides = {}) => createCodexQuotaPoller({
-  codexHome: testHome,
   onUpdate: () => {},
-  spawnProcess: server.spawnProcess,
+  readQuota: server.readQuota,
   ...overrides,
 })
 
@@ -111,28 +78,28 @@ test("omits today's reset date and includes a date for a later reset day", () =>
 
 test("uses actual durations rather than assuming primary/secondary order", () => {
   const result = limits()
-  const { primary, secondary } = result.rateLimits
-  result.rateLimits.primary = secondary
-  result.rateLimits.secondary = primary
+  const { primary_window, secondary_window } = result.rate_limit
+  result.rate_limit.primary_window = secondary_window
+  result.rate_limit.secondary_window = primary_window
   assert.deepEqual(parseQuotaWindows(result).map((part) => part.label), ["weekly", "5h"])
-  result.rateLimits.secondary = null
+  result.rate_limit.secondary_window = null
   assert.equal(parseQuotaWindows(result).length, 1)
 })
 
-test("selects the codex bucket and refuses an unrelated model bucket", () => {
-  const result = { rateLimits: { ...limits().rateLimits, limitId: "review" }, rateLimitsByLimitId: { codex: limits().rateLimits } }
+test("selects subscription limits and ignores unrelated review limits", () => {
+  const result = { ...limits(), code_review_rate_limit: limits(50).rate_limit }
   assert.equal(parseQuotaWindows(result)[0].remaining, 91)
-  delete result.rateLimitsByLimitId.codex
+  delete result.rate_limit
   assert.deepEqual(parseQuotaWindows(result), [])
 })
 
 test("rejects missing/invalid numbers and clamps over-limit percentages", () => {
   assert.deepEqual(parseQuotaWindows(null), [])
   const result = limits(110)
-  result.rateLimits.secondary.usedPercent = "40"
+  result.rate_limit.secondary_window.used_percent = "40"
   assert.equal(parseQuotaWindows(result)[0].remaining, 0)
   assert.equal(parseQuotaWindows(result).length, 1)
-  result.rateLimits.primary.windowDurationMins = null
+  result.rate_limit.primary_window.limit_window_seconds = null
   assert.deepEqual(parseQuotaWindows(result), [])
 })
 
@@ -145,33 +112,30 @@ test("marks failed/expired cached data and never invents a reset", () => {
   assert.equal(quotaDisplayParts({ status: "unavailable", windows: [], updatedAt: null })[0].text, "Codex quota unavailable")
 })
 
-test("uses one persistent process, the explicit home, and only read RPCs", async () => {
+test("polls the server with cancellable requests instead of starting Codex", async () => {
   const server = fakeServer()
   const client = poller(server)
   try {
     await client.refresh()
     await client.refresh()
     assert.equal(client.snapshot().status, "ready")
-    assert.equal(server.starts.length, 1)
-    assert.equal(server.starts[0].options.env.CODEX_HOME, testHome)
-    assert.deepEqual(server.requests.map((request) => request.method), [
-      "initialize", "initialized", "account/read", "account/rateLimits/read", "account/read", "account/rateLimits/read",
-    ])
+    assert.equal(server.requests.length, 2)
+    assert.ok(server.requests.every((signal) => signal instanceof AbortSignal))
   } finally { client.stop() }
-  assert.equal(server.children[0].exitCode, 0)
+  assert.ok(server.requests.every((signal) => signal.aborted))
 })
 
 test("does not overlap requests and continues refreshing on the interval", async () => {
   let reads = 0
   let release
-  const server = fakeServer((request, send) => {
-    if (request.method !== "account/rateLimits/read") return
+  const server = fakeServer(() => {
     reads += 1
     if (reads === 1) {
-      release = () => send({ id: request.id, result: limits() })
-      return false
+      return new Promise((resolve) => {
+        release = () => resolve({ account: "account-1", windows: parseQuotaWindows(limits()) })
+      })
     }
-    return limits(10)
+    return { account: "account-1", windows: parseQuotaWindows(limits(10)) }
   })
   const client = poller(server, { intervalMs: 20 })
   try {
@@ -187,26 +151,24 @@ test("does not overlap requests and continues refreshing on the interval", async
   } finally { client.stop() }
 })
 
-test("fails closed for a missing Codex home without spawning a fallback", async () => {
-  const server = fakeServer()
-  const client = poller(server, { codexHome: join(testHome, "nonexistent") })
+test("fails closed when the server RPC is unavailable", async () => {
+  const server = fakeServer(() => { throw new Error("private upstream diagnostics") })
+  const client = poller(server)
   try {
     await client.refresh()
     assert.equal(client.snapshot().status, "unavailable")
-    assert.equal(server.starts.length, 0)
+    assert.deepEqual(client.snapshot().windows, [])
   } finally { client.stop() }
 })
 
 test("an unavailable quota displays loading again while a retry is in flight", async () => {
   let reads = 0
-  const server = fakeServer((request, send) => {
-    if (request.method !== "account/rateLimits/read") return
+  const server = fakeServer((signal) => {
     reads += 1
     if (reads === 1) {
-      send({ id: request.id, error: { message: "unavailable" } })
-      return false
+      throw new Error("unavailable")
     }
-    return false
+    return new Promise((_, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }))
   })
   const updates = []
   const client = poller(server, { onUpdate: (state) => updates.push(state.status) })
@@ -221,25 +183,44 @@ test("an unavailable quota displays loading again while a retry is in flight", a
   } finally { client.stop() }
 })
 
-test("API-key accounts cannot inherit or fetch ChatGPT quotas", async () => {
-  const server = fakeServer((request) => request.method === "account/read" ? { account: { type: "apiKey" } } : undefined)
-  const client = poller(server)
-  try {
-    await client.refresh()
-    assert.equal(client.snapshot().status, "unavailable")
-    assert.ok(!server.requests.some((request) => request.method === "account/rateLimits/read"))
-  } finally { client.stop() }
+test("the server uses OpenCode OAuth and returns only account identity and quota windows", async (t) => {
+  const connection = { id: "account-1", type: "credential", method: "oauth" }
+  let read
+  await serverPlugin.setup({
+    rpc: { register: async (definition, handlers) => {
+      assert.equal(definition, FooterQuota)
+      read = handlers.read
+    } },
+    integration: { connection: {
+      active: async (id) => { assert.equal(id, "openai"); return connection },
+      resolve: async (value) => {
+        assert.equal(value, connection)
+        return { type: "oauth", access: "test-access", metadata: { accountID: "test-account" } }
+      },
+    } },
+  })
+  const signal = new AbortController().signal
+  t.mock.method(globalThis, "fetch", async (url, options) => {
+    assert.equal(url, "https://chatgpt.com/backend-api/wham/usage")
+    assert.equal(options.headers.Authorization, "Bearer test-access")
+    assert.equal(options.headers["ChatGPT-Account-Id"], "test-account")
+    assert.equal(options.signal, signal)
+    return Response.json(limits())
+  })
+  assert.deepEqual(await read({}, { signal }), { account: "account-1", windows: parseQuotaWindows(limits()) })
+  connection.method = "key"
+  assert.deepEqual(await read({}, { signal }), { account: null, windows: [] })
+  assert.equal(globalThis.fetch.mock.calls.length, 1)
 })
 
 test("a failed refresh retains a visibly stale value and retries cleanly", async () => {
   let reads = 0
-  const server = fakeServer((request, send) => {
-    if (request.method !== "account/rateLimits/read") return
+  const server = fakeServer(() => {
     reads += 1
     if (reads === 2) {
-      send({ id: request.id, error: { message: "private upstream diagnostics" } })
-      return false
+      return { account: "account-1", windows: null }
     }
+    return { account: "account-1", windows: parseQuotaWindows(limits()) }
   })
   const client = poller(server)
   try {
@@ -249,34 +230,34 @@ test("a failed refresh retains a visibly stale value and retries cleanly", async
     assert.equal(client.snapshot().windows[0].remaining, 91)
     await client.refresh()
     assert.equal(client.snapshot().status, "ready")
-    assert.equal(server.starts.length, 2)
+    assert.equal(server.requests.length, 3)
   } finally { client.stop() }
 })
 
 test("an account change clears the old cache before accepting another response", async () => {
   let reads = 0
-  const server = fakeServer((request, send) => {
-    if (request.method !== "account/rateLimits/read") return
+  const server = fakeServer(() => {
     reads += 1
     if (reads === 2) {
-      send({ method: "account/updated", params: { authMode: "chatgpt" } })
-      send({ id: request.id, result: limits(50) })
-      return false
+      return { account: "account-2", windows: null }
     }
+    return { account: reads === 1 ? "account-1" : "account-2", windows: parseQuotaWindows(limits(50)) }
   })
   const client = poller(server)
   try {
     await client.refresh()
     await client.refresh()
     assert.deepEqual(client.snapshot().windows, [])
-    assert.equal(client.snapshot().status, "loading")
+    assert.equal(client.snapshot().status, "unavailable")
     await client.refresh()
     assert.equal(client.snapshot().status, "ready")
   } finally { client.stop() }
 })
 
 test("timeout and cleanup reject pending RPCs without hanging or publishing after stop", async () => {
-  const server = fakeServer(() => false)
+  const server = fakeServer((signal) => new Promise((_, reject) => {
+    signal.addEventListener("abort", () => reject(signal.reason), { once: true })
+  }))
   let updates = 0
   const client = poller(server, { requestTimeoutMs: 20, onUpdate: () => { updates += 1 } })
   await client.refresh()
@@ -287,5 +268,5 @@ test("timeout and cleanup reject pending RPCs without hanging or publishing afte
   const countAtStop = updates
   await delay(30)
   assert.equal(updates, countAtStop)
-  assert.ok(server.children.every((child) => child.exitCode === 0))
+  assert.ok(server.requests.every((signal) => signal.aborted))
 })

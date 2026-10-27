@@ -4,7 +4,8 @@
 
 | File | Responsibility |
 |---|---|
-| `tui.ts` | Local discovery entrypoint. |
+| `index.ts`, `tui.ts` | Local discovery entrypoints for server and terminal plugins. |
+| `src/index.mjs` | Server quota RPC using OpenCode's active OpenAI OAuth connection. |
 | `src/tui.tsx` | OpenCode/Solid adapter: selected model, session data, theme colors, lifecycle, footer rendering, and state-aware animated pet. |
 | `src/options.mjs` | Portable defaults, option validation, provider eligibility. |
 | `src/settings.mjs` | Profile-scoped storage keys and validated advanced settings. |
@@ -13,14 +14,19 @@
 | `src/agent-display.mjs` | Agent labels and native categorical/configured agent colors. |
 | `src/statusline-config.mjs` | Item catalog, immutable picker drafts and search. |
 | `src/status-parts.mjs` | Ordered footer items built from available session, machine, and quota data. |
-| `src/codex-quota.mjs` | Read-only JSON-RPC connection, polling, normalization, cache, and safe display text. |
-| `src/*.test.mjs` | Offline tests using fabricated rate-limit responses and subprocess streams. |
+| `src/codex-quota.mjs` | Quota RPC polling, normalization, cache, and safe display text. |
+| `src/quota-rpc.mjs` | Shared RPC schema; only account identity and quota windows cross to the terminal. |
+| `src/pull-request.mjs` | Read-only GitHub CLI lookup of the branch's open PR. |
+| `src/*.test.mjs` | Offline tests using fabricated quota RPC and HTTP responses. |
 
-Keep the package CLI-only (`./tui` export). It needs no server-side tools, shared
-account configuration, model-provider hooks, or changes to OpenCode's core code.
+The package exports a server plugin (`.`) and terminal plugin (`./tui`). Configure
+it in `opencode.json(c)` so the server quota RPC is available; the terminal UI is
+loaded automatically. It needs no server-side tools, model-provider hooks, or
+changes to OpenCode's core code.
 
-Local discovery uses `tui.ts` and the TSX sources. `npm pack` compiles the published
-`dist/tui.js` entrypoint through `scripts/build.mjs`. The build uses OpenCode's
+Local discovery uses `index.ts`, `tui.ts`, and their sources. `npm pack` compiles
+`dist/tui.js` and copies the server's `dist/index.mjs` through `scripts/build.mjs`.
+The build uses OpenCode's
 shared `opentui:runtime-module:*` imports for Solid and OpenTUI render helpers,
 without bundling their runtimes. OpenCode 2.0.22 skips its JSX transform inside
 `node_modules`; shipping raw TSX there creates separate runtime contexts and
@@ -29,7 +35,7 @@ just an extracted directory or the local discovery entrypoint.
 
 ## Rendering contract
 
-Each part has `text`, `tone`, and `item`, plus optional `separator` and `color`.
+Each part has `text`, `tone`, and `item`, plus optional `separator`, `color`, and `url`.
 `buildStatusParts` filters unavailable data and applies the saved item order,
 preserving part order within an item. Semantic theme colors are applied by the
 renderer; data sources should not embed ANSI sequences.
@@ -42,10 +48,13 @@ does not expose the client-local draft agent, so a native agent selection is not
 reflected until it is committed when a prompt is sent. Do not guess the selection
 from a model or intercept the host's agent commands to hide this API limitation.
 
-The plugin appends to `prompt.footer`. It does **not** replace the host's footer
-or render above the input. The text uses word wrapping, `flexShrink={1}`, and
-`minWidth={0}` so it shares the native row's available width. Do not give it a
-full-parent width or absolute position: those can cover processing/cancel controls.
+The plugin replaces `prompt.footer`, including the native `prompt.footer.status`
+and `prompt.footer.file` contents. The custom run-state item provides its own
+Working spinner; keyboard interrupt behavior is unchanged. The wrapping row uses
+full-parent width, `flexShrink={1}`, and `minWidth={0}`. The spacer item expands
+between available groups without leading/trailing gaps or adjacent separators.
+Open PR numbers are links attached to the Git branch item. Lookups refresh every
+minute and are cancelled when the session location or branch changes.
 
 Read terminal dimensions from `context.renderer` and dispose resize listeners when
 the dialog closes. Avoid OpenTUI renderer-context hooks: an npm-installed peer can
@@ -63,7 +72,7 @@ have a separate context from the host, causing a `No renderer found` crash.
 
 ## Add an option
 
-Normalize/validate it before starting processes, add a documented default, and
+Normalize/validate it before polling, add a documented default, and
 write tests for both defaults and invalid values. Never default to a particular
 user's path, organization, account, or profile. Paths must be portable and secrets
 must not appear in options or examples.
@@ -88,14 +97,15 @@ item saves only write the item list so they don't overwrite appearance changes.
 ## Provider and quota lifecycle
 
 The selected model's provider is the gate for both display and polling. With no
-eligible provider, **no Codex process should run**. OpenAI is enabled by default;
+eligible provider, **no quota polling should run**. OpenAI is enabled by default;
 custom provider IDs require explicit opt-in. Merely recognizing a model name as
 GPT is not enough to infer which account supplies its quota.
 
 A reactive effect starts the poller on an eligible provider and stops it when the
 provider becomes ineligible. Stopping also cancels pending RPCs and ignores late
 results. Re-enabling starts fresh rather than showing another provider's cache.
-If no quota windows exist, quota entries are hidden until data is available.
+If no quota windows exist, the first selected quota item shows loading or
+unavailable status. A changed account clears the previous account's cached windows.
 
 Keep account limits separate from context usage, session token totals, and model
 service-tier hints. Future quota sources should implement similarly scoped
@@ -103,12 +113,14 @@ normalization, caching, and cleanup rather than adding credential reads to JSX.
 
 ## Read-only protocol boundary
 
-Allowed methods are `initialize`, `initialized`, `account/read`, and
-`account/rateLimits/read`. Account-change notifications invalidate the cache.
-Do not add thread creation, inference, automatic sign-in, resets, or account
-mutations as side effects of rendering a footer.
+The server resolves OpenCode's active OpenAI OAuth connection and reads
+`https://chatgpt.com/backend-api/wham/usage`. OpenCode owns credential refresh.
+Only account identity and normalized quota windows are returned by
+`opencode-footer.quota.read`; credentials and upstream error bodies stay on the
+server. API-key connections do not fetch ChatGPT quotas. Do not add inference,
+automatic sign-in, resets, or account mutations as side effects of rendering a footer.
 
-Quota tests inject a fake subprocess. New tests must remain offline and portable:
+Quota tests inject fake RPCs and HTTP responses. New tests must remain offline and portable:
 use temporary directories instead of an author's real home or login. Test missing
-windows, invalid percentages, expired caches, disconnections, timeouts,
+windows, invalid percentages, expired caches, RPC failures, timeouts,
 non-overlapping polling, provider gates, and cleanup.
